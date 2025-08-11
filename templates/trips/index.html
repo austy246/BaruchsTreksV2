@@ -10,7 +10,9 @@
     <p>Browse through our collection of trips and find your next mountain adventure.</p>
     <div class="d-flex gap-2">
         <a class="btn btn-primary btn-lg" href="{% url 'trips:all_trips' %}" role="button">View All Trips</a>
+        {% if user.is_authenticated %}
         <a class="btn btn-success btn-lg" href="{% url 'trips:trip_create' %}" role="button">Create New Trip</a>
+        {% endif %}
     </div>
 </div>
 
@@ -57,3 +59,4 @@
     {% endfor %}
 </div>
 {% endblock %}
+

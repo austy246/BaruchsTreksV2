@@ -4,6 +4,7 @@ from django.conf import settings
 import json
 import traceback
 import logging
+from datetime import datetime, timezone
 from django.http import HttpResponse, HttpResponseServerError
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.urls import reverse
@@ -311,6 +312,9 @@ def all_trips(request):
     
     # Get filter parameter from request
     trip_filter = request.GET.get('filter', 'all')
+    # Sorting parameters
+    sort_key = request.GET.get('sort', 'modified')  # modified | created | completed | name
+    sort_dir = request.GET.get('dir', 'desc')       # asc | desc
     
     # Filter trips based on completion status
     if trip_filter == 'completed':
@@ -320,11 +324,30 @@ def all_trips(request):
     else:
         filtered_trips = all_trips
     
+    # Sorting logic
+    fallback_dt = datetime.min.replace(tzinfo=timezone.utc)
+    if sort_key == 'created':
+        key_func = lambda t: (t.get('rowkey_dt') or fallback_dt)
+    elif sort_key == 'completed':
+        key_func = lambda t: (t.get('completed_at') or fallback_dt)
+    elif sort_key == 'name':
+        key_func = lambda t: (t.get('title') or '').lower()
+    else:  # 'modified' default
+        key_func = lambda t: (t.get('modified_at') or t.get('rowkey_dt') or fallback_dt)
+
+    reverse = (sort_dir != 'asc')
+    try:
+        filtered_trips = sorted(filtered_trips, key=key_func, reverse=reverse)
+    except Exception as e:
+        print(f"Sorting error: {e}")
+    
     print(f"Filter: {trip_filter}, Total trips: {len(all_trips)}, Filtered trips: {len(filtered_trips)}")
     
     return render(request, 'trips/all_trips.html', {
         'trips': filtered_trips,
         'current_filter': trip_filter,
+        'current_sort': sort_key,
+        'current_dir': sort_dir,
         'completed_count': len([trip for trip in all_trips if trip.get('trip_completed_on')]),
         'future_count': len([trip for trip in all_trips if not trip.get('trip_completed_on')]),
         'total_count': len(all_trips),

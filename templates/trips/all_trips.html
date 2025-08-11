@@ -17,21 +17,57 @@
 
 <div class="row">
     <div class="col-12 mb-4">
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <p class="card-text mb-0">Browse through our collection of hiking and mountaineering adventures.</p>
-                    
-                    <div class="btn-group" role="group" aria-label="Trip filter">
-                        <a href="{% url 'trips:all_trips' %}?filter=all" class="btn btn-outline-primary {% if current_filter == 'all' %}active{% endif %}">
-                            All Trips <span class="badge bg-secondary">{{ total_count }}</span>
+        <div class="card shadow-sm overflow-visible">
+            <div class="card-body overflow-visible">
+                <div class="d-flex flex-column gap-2">
+
+                    <!-- Filter row -->
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="small text-muted"><i class="bi bi-funnel me-1"></i>Filter:</span>
+                        <div class="btn-group" role="group" aria-label="Trip filter">
+                            <a href="{% url 'trips:all_trips' %}?filter=all&sort={{ current_sort }}&dir={{ current_dir }}" class="btn btn-outline-primary {% if current_filter == 'all' %}active{% endif %}">
+                                All Trips <span class="badge bg-secondary">{{ total_count }}</span>
+                            </a>
+                            <a href="{% url 'trips:all_trips' %}?filter=completed&sort={{ current_sort }}&dir={{ current_dir }}" class="btn btn-outline-success {% if current_filter == 'completed' %}active{% endif %}">
+                                Completed <span class="badge bg-secondary">{{ completed_count }}</span>
+                            </a>
+                            <a href="{% url 'trips:all_trips' %}?filter=future&sort={{ current_sort }}&dir={{ current_dir }}" class="btn btn-outline-info {% if current_filter == 'future' %}active{% endif %}">
+                                Future Trips <span class="badge bg-secondary">{{ future_count }}</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Sort row -->
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="small text-muted"><i class="bi bi-arrow-down-up me-1"></i>Sort:</span>
+                        <div class="btn-group" role="group" aria-label="Sort by">
+                            <a class="btn btn-outline-secondary {% if current_sort == 'modified' %}active{% endif %}" href="{% url 'trips:all_trips' %}?filter={{ current_filter }}&sort=modified&dir={{ current_dir }}" title="Last modified">
+                                <i class="bi bi-clock-history"></i>
+                                <span class="d-none d-md-inline ms-1">Modified</span>
+                            </a>
+                            <a class="btn btn-outline-secondary {% if current_sort == 'created' %}active{% endif %}" href="{% url 'trips:all_trips' %}?filter={{ current_filter }}&sort=created&dir={{ current_dir }}" title="Created">
+                                <i class="bi bi-calendar-plus"></i>
+                                <span class="d-none d-md-inline ms-1">Created</span>
+                            </a>
+                            <a class="btn btn-outline-secondary {% if current_sort == 'completed' %}active{% endif %}" href="{% url 'trips:all_trips' %}?filter={{ current_filter }}&sort=completed&dir={{ current_dir }}" title="Completed">
+                                <i class="bi bi-flag"></i>
+                                <span class="d-none d-md-inline ms-1">Completed</span>
+                            </a>
+                            <a class="btn btn-outline-secondary {% if current_sort == 'name' %}active{% endif %}" href="{% url 'trips:all_trips' %}?filter={{ current_filter }}&sort=name&dir={{ current_dir }}" title="Trip name">
+                                <i class="bi bi-fonts"></i>
+                                <span class="d-none d-md-inline ms-1">Name</span>
+                            </a>
+                        </div>
+
+                        {% if current_dir == 'asc' %}
+                        <a class="btn btn-outline-secondary" href="{% url 'trips:all_trips' %}?filter={{ current_filter }}&sort={{ current_sort }}&dir=desc" title="Descending">
+                            <i class="bi bi-sort-down"></i>
                         </a>
-                        <a href="{% url 'trips:all_trips' %}?filter=completed" class="btn btn-outline-success {% if current_filter == 'completed' %}active{% endif %}">
-                            Completed <span class="badge bg-secondary">{{ completed_count }}</span>
+                        {% else %}
+                        <a class="btn btn-outline-secondary" href="{% url 'trips:all_trips' %}?filter={{ current_filter }}&sort={{ current_sort }}&dir=asc" title="Ascending">
+                            <i class="bi bi-sort-up"></i>
                         </a>
-                        <a href="{% url 'trips:all_trips' %}?filter=future" class="btn btn-outline-info {% if current_filter == 'future' %}active{% endif %}">
-                            Future Trips <span class="badge bg-secondary">{{ future_count }}</span>
-                        </a>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -96,3 +132,4 @@
     {% endfor %}
 </div>
 {% endblock %}
+

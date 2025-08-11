@@ -2,7 +2,7 @@ from azure.data.tables import TableServiceClient, TableClient
 import os
 import json
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -68,9 +68,53 @@ class AzureTableService:
                     logger.warning(f"Skipping entity without RowKey: {entity}")
                     continue
                 
+                # Normalize Azure Timestamp (system property) to a datetime
+                # With azure.data.tables, system properties are available via entity.metadata
+                raw_ts = None
+                try:
+                    raw_ts = getattr(entity, 'metadata', {}).get('timestamp')
+                except Exception:
+                    raw_ts = None
+                if not raw_ts:
+                    # Fallback if SDK structure differs: some returns include 'Timestamp' key directly
+                    raw_ts = entity.get('Timestamp')
+                modified_at = None
+                if raw_ts:
+                    try:
+                        # Azure SDK usually returns a datetime already
+                        if isinstance(raw_ts, datetime):
+                            modified_at = raw_ts if raw_ts.tzinfo else raw_ts.replace(tzinfo=timezone.utc)
+                        else:
+                            # Parse ISO string
+                            parsed = datetime.fromisoformat(str(raw_ts).replace('Z', '+00:00'))
+                            modified_at = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+                    except Exception:
+                        modified_at = None
+                
                 # Map Azure Table entity to the expected format
+                # Fallback: derive a datetime from RowKey pattern 'trip_YYYYMMDDHHMMSS'
+                row_key = entity.get('RowKey')
+                rowkey_dt = None
+                if row_key and isinstance(row_key, str) and row_key.startswith('trip_'):
+                    try:
+                        rowkey_dt = datetime.strptime(row_key.split('trip_')[-1][:14], "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+                    except Exception:
+                        rowkey_dt = None
+                # Normalize completed date
+                raw_completed = entity.get('TripCompletedOn', '')
+                completed_at = None
+                if raw_completed:
+                    try:
+                        if isinstance(raw_completed, datetime):
+                            completed_at = raw_completed if raw_completed.tzinfo else raw_completed.replace(tzinfo=timezone.utc)
+                        else:
+                            parsed_c = datetime.fromisoformat(str(raw_completed))
+                            completed_at = parsed_c if parsed_c.tzinfo else parsed_c.replace(tzinfo=timezone.utc)
+                    except Exception:
+                        completed_at = None
+
                 trip = {
-                    'row_key': entity.get('RowKey'),
+                    'row_key': row_key,
                     'title': entity.get('Title', 'Untitled Trip'),
                     'description': entity.get('Description', ''),
                     'trip_completed_on': entity.get('TripCompletedOn', ''),
@@ -80,7 +124,10 @@ class AzureTableService:
                     'difficulty': entity.get('Difficulty', ''),
                     'map_url': entity.get('MapUrl', ''),
                     'image_url': entity.get('ImageUrl', ''),
-                    'timestamp': entity.get('Timestamp', ''),  # Include Timestamp for sorting
+                    'modified_at': modified_at,  # normalized last-modified timestamp
+                    'timestamp': modified_at.isoformat() if modified_at else '',
+                    'rowkey_dt': rowkey_dt,
+                    'completed_at': completed_at,
                     # Add any other fields needed by your templates
                 }
                 
@@ -88,20 +135,17 @@ class AzureTableService:
                 logger.info(f"Trip: {trip['row_key']} - {trip['title']} - Completed: {trip['trip_completed_on']}")
                 
                 trips.append(trip)
+                logger.debug(f"Trip {trip['row_key']} modified_at: {trip['modified_at']}")
             
-            # Try sorting by timestamp first (most reliable)
-            try:
-                trips = sorted(trips, key=lambda x: x.get('timestamp', ''), reverse=True)
-                logger.info(f"Sorted {len(trips)} trips by timestamp (newest first)")
-            except Exception as sort_error:
-                logger.error(f"Error sorting by timestamp: {str(sort_error)}")
-                # Fallback to trip_completed_on
-                try:
-                    trips = sorted(trips, key=lambda x: x.get('trip_completed_on', ''), reverse=True)
-                    logger.info(f"Sorted {len(trips)} trips by trip_completed_on (newest first)")
-                except Exception as sort_error2:
-                    logger.error(f"Error sorting by trip_completed_on: {str(sort_error2)}")
-                    # No sorting as last resort
+            # Sort by modified_at (newest first); fallback gracefully if missing
+            # Ensure fallback is timezone-aware to match Azure UTC datetimes
+            fallback_dt = datetime.min.replace(tzinfo=timezone.utc)
+            trips = sorted(
+                trips,
+                key=lambda x: (x.get('modified_at') or x.get('rowkey_dt') or fallback_dt),
+                reverse=True,
+            )
+            logger.info(f"Sorted {len(trips)} trips by modified_at (newest first)")
             
             return trips
             
@@ -125,6 +169,25 @@ class AzureTableService:
             # Log all keys in the entity to help debug
             logger.info(f"Entity keys: {list(entity.keys())}")
             
+            # Normalize Azure Timestamp
+            raw_ts = None
+            try:
+                raw_ts = getattr(entity, 'metadata', {}).get('timestamp')
+            except Exception:
+                raw_ts = None
+            if not raw_ts:
+                raw_ts = entity.get('Timestamp')
+            modified_at = None
+            if raw_ts:
+                try:
+                    if isinstance(raw_ts, datetime):
+                        modified_at = raw_ts if raw_ts.tzinfo else raw_ts.replace(tzinfo=timezone.utc)
+                    else:
+                        parsed = datetime.fromisoformat(str(raw_ts).replace('Z', '+00:00'))
+                        modified_at = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+                except Exception:
+                    modified_at = None
+
             # Transform the entity to match the expected format in the templates
             trip = {
                 'row_key': entity.get('RowKey'),
@@ -137,7 +200,8 @@ class AzureTableService:
                 'difficulty': entity.get('Difficulty', ''),
                 'map_url': entity.get('MapUrl', ''),
                 'image_url': entity.get('ImageUrl', ''),
-                'timestamp': entity.get('Timestamp', ''),
+                'modified_at': modified_at,
+                'timestamp': modified_at.isoformat() if modified_at else '',
                 'participants': entity.get('Participants', ''),
                 'meters_ascend': entity.get('MetersAscend', 0),
                 'meters_descend': entity.get('MetersDescend', 0),
@@ -298,7 +362,6 @@ class AzureTableService:
                 'FerataGrade': trip_data.get('ferata_grade', ''),
                 'ParkingJson': trip_data.get('parking_json', ''),
                 'HighPointJson': trip_data.get('high_point_json', ''),
-                'Timestamp': datetime.now().isoformat(),  # Add current timestamp
             }
             
             # Handle date fields
