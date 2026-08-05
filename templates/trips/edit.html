@@ -332,12 +332,11 @@ Edit {{ trip.title }} - Baruch's Treks
                             </div>
                             {% endif %}
                         </div>
-                        <div class="form-check">
-                            {{ form.gpx_autofill }}
-                            <label class="form-check-label" for="{{ form.gpx_autofill.id_for_label }}">
-                                Převzít z GPX převýšení, délku trvání a body startu/vrcholu (přepíše hodnoty výše)
-                            </label>
-                        </div>
+                        <small class="form-text text-muted d-block">
+                            Prázdná pole (převýšení, délka, datum, start a vrchol) se z GPX
+                            předvyplní. U těch, které už vyplněné jsou, se stránka nejdřív
+                            zeptá, jestli je přepsat.
+                        </small>
                     </div>
                 </div>
 

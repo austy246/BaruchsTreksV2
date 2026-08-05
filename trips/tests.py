@@ -289,16 +289,16 @@ class TripEditGpxUploadTests(TestCase):
 
     def post_new_trip(self, gpx=None, **extra):
         data = {'title': 'Sněžka', 'description': '', 'participants': '',
-                'parking_json': '', 'high_point_json': '', 'gpx_autofill': 'on'}
+                'parking_json': '', 'high_point_json': ''}
         data.update(extra)
         if gpx is not None:
             data['gpx_file'] = SimpleUploadedFile('activity.gpx', gpx, content_type='application/gpx+xml')
         return self.client.post(reverse('trips:trip_create'), data)
 
-    def test_upload_fills_trip_fields_and_stores_the_track(self):
+    def test_upload_fills_blank_fields_and_stores_the_track(self):
         response = self.post_new_trip(self.GPX)
 
-        # Autofilled values are a starting point, so the editor stays open for
+        # Filled-in values are a starting point, so the editor stays open for
         # them to be corrected rather than jumping to the detail page.
         self.assertRedirects(
             response,
@@ -314,24 +314,27 @@ class TripEditGpxUploadTests(TestCase):
                          {'Latitude': 50.0, 'Longtitude': 14.0})
         self.assertEqual(json.loads(trip_data['high_point_json'])['Latitude'], 50.001)
         # A blank completion date is taken from the GPX timestamps.
-        self.assertEqual(trip_data['trip_completed_on'].isoformat(), '2025-07-12')
+        self.assertEqual(trip_data['trip_completed_on'], '2025-07-12')
 
         stats = json.loads(trip_data['track_json'])
         self.assertEqual(stats['meters_ascend'], 500)
+        # The stored record carries the points the form can be refilled from
+        self.assertEqual(stats['start'], {'Latitude': 50.0, 'Longtitude': 14.0})
+        self.assertEqual(stats['started_on'], '2025-07-12')
 
         trip_id, gpx_bytes, geojson = self.track_service.upload_track.call_args[0]
         self.assertEqual(trip_id, 'trip_20250712060000')
         self.assertEqual(gpx_bytes, self.GPX)
         self.assertEqual(json.loads(geojson)['geometry']['type'], 'LineString')
 
-    def test_autofill_off_keeps_the_typed_values(self):
+    def test_typed_values_are_never_overwritten_without_asking(self):
         response = self.post_new_trip(self.GPX, meters_ascend=111, meters_descend=222,
-                                      length_hours=9, gpx_autofill='')
+                                      length_hours=9, trip_completed_on='2024-01-02')
 
-        # Nothing was derived, so there is nothing to review
+        # Everything the GPX would replace is left alone until confirmed
         self.assertRedirects(
             response,
-            reverse('trips:trip_detail', kwargs={'trip_id': 'trip_20250712060000'}),
+            reverse('trips:trip_track_apply', kwargs={'trip_id': 'trip_20250712060000'}),
             fetch_redirect_response=False,
         )
 
@@ -339,15 +342,22 @@ class TripEditGpxUploadTests(TestCase):
         self.assertEqual(trip_data['meters_ascend'], 111)
         self.assertEqual(trip_data['meters_descend'], 222)
         self.assertEqual(trip_data['length_hours'], 9)
-        # The track statistics are stored regardless.
+        self.assertEqual(trip_data['trip_completed_on'].isoformat(), '2024-01-02')
+        # The blanks still get filled, and the track is stored either way
+        self.assertEqual(json.loads(trip_data['parking_json']),
+                         {'Latitude': 50.0, 'Longtitude': 14.0})
         self.assertTrue(trip_data['track_json'])
         self.track_service.upload_track.assert_called_once()
 
-    def test_a_typed_completion_date_survives_autofill(self):
-        self.post_new_trip(self.GPX, trip_completed_on='2024-01-02')
+    def test_a_value_matching_the_gpx_is_not_treated_as_a_conflict(self):
+        # 500 m of ascent is exactly what this GPX yields, so nothing to ask
+        response = self.post_new_trip(self.GPX, meters_ascend=500)
 
-        trip_data = self.table.create_trip.call_args[0][0]
-        self.assertEqual(trip_data['trip_completed_on'].isoformat(), '2024-01-02')
+        self.assertRedirects(
+            response,
+            reverse('trips:trip_edit', kwargs={'trip_id': 'trip_20250712060000'}),
+            fetch_redirect_response=False,
+        )
 
     def test_broken_gpx_is_reported_and_nothing_is_saved(self):
         response = self.post_new_trip(b'<gpx>not really</gpx>')
@@ -377,25 +387,27 @@ class TripEditGpxUploadTests(TestCase):
         self.table.create_trip.assert_called_once()
         self.track_service.upload_track.assert_not_called()
 
-    def test_adding_a_gpx_to_an_existing_trip_returns_to_the_editor(self):
+    def post_to_existing_trip(self, **extra):
         self.table.get_trip_by_id.return_value = {
             'row_key': 'trip_existing', 'title': 'Sněžka', 'description': '',
             'trip_completed_on': '2024-01-02', 'location': '', 'difficulty': '',
             'parking_json': '', 'high_point_json': '', 'track_json': '',
         }
-
-        response = self.client.post(
-            reverse('trips:trip_edit', kwargs={'trip_id': 'trip_existing'}),
-            {'title': 'Sněžka', 'description': '', 'participants': '',
-             'trip_completed_on': '2024-01-02',
-             'parking_json': '', 'high_point_json': '', 'gpx_autofill': 'on',
-             'gpx_file': SimpleUploadedFile('activity.gpx', self.GPX,
-                                            content_type='application/gpx+xml')},
+        data = {'title': 'Sněžka', 'description': '', 'participants': '',
+                'parking_json': '', 'high_point_json': '',
+                'gpx_file': SimpleUploadedFile('activity.gpx', self.GPX,
+                                               content_type='application/gpx+xml')}
+        data.update(extra)
+        return self.client.post(
+            reverse('trips:trip_edit', kwargs={'trip_id': 'trip_existing'}), data
         )
+
+    def test_existing_values_send_the_user_to_the_confirmation_page(self):
+        response = self.post_to_existing_trip(trip_completed_on='2024-01-02')
 
         self.assertRedirects(
             response,
-            reverse('trips:trip_edit', kwargs={'trip_id': 'trip_existing'}),
+            reverse('trips:trip_track_apply', kwargs={'trip_id': 'trip_existing'}),
             fetch_redirect_response=False,
         )
 
@@ -404,10 +416,117 @@ class TripEditGpxUploadTests(TestCase):
 
         row_key, trip_data = self.table.update_trip.call_args[0]
         self.assertEqual(row_key, 'trip_existing')
+        # Blanks filled, the date the trip already had untouched
         self.assertEqual(trip_data['meters_ascend'], 500)
         self.assertEqual(json.loads(trip_data['high_point_json'])['Latitude'], 50.001)
-        # The date already on the trip is not replaced by the GPX one
         self.assertEqual(trip_data['trip_completed_on'].isoformat(), '2024-01-02')
+
+    def test_an_all_blank_existing_trip_is_filled_without_asking(self):
+        response = self.post_to_existing_trip()
+
+        self.assertRedirects(
+            response,
+            reverse('trips:trip_edit', kwargs={'trip_id': 'trip_existing'}),
+            fetch_redirect_response=False,
+        )
+
+        _, trip_data = self.table.update_trip.call_args[0]
+        self.assertEqual(trip_data['meters_ascend'], 500)
+        self.assertEqual(trip_data['trip_completed_on'], '2025-07-12')
+
+
+class TrackApplyTests(TestCase):
+    """The confirmation step before a track overwrites entered values."""
+
+    TRIP_ID = 'trip_existing'
+
+    STATS = {
+        'distance_km': 12.4, 'meters_ascend': 500, 'meters_descend': 400,
+        'duration_hours': 0.5, 'point_count': 3, 'original_point_count': 3,
+        'min_elevation': 400, 'max_elevation': 900,
+        'bounds': [[50.0, 14.0], [50.002, 14.0]], 'name': 'Sněžka',
+        'start': {'Latitude': 50.0, 'Longtitude': 14.0},
+        'high_point': {'Latitude': 50.001, 'Longtitude': 14.0, 'Elevation': 900},
+        'started_on': '2025-07-12',
+    }
+
+    def setUp(self):
+        self.user = User.objects.create_user('baruch', password='x', is_staff=True)
+        self.client.force_login(self.user)
+
+        self.table = mock.Mock()
+        self.table.update_trip.return_value = (True, "")
+        self.table.get_trip_by_id.return_value = {
+            'row_key': self.TRIP_ID, 'title': 'Sněžka',
+            'meters_ascend': 111, 'meters_descend': 0, 'length_hours': 9,
+            'trip_completed_on': '2024-01-02',
+            'parking_json': '', 'high_point_json': '',
+            'track_json': json.dumps(self.STATS),
+        }
+
+        patch = mock.patch('trips.views.get_data_service', return_value=self.table)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+        self.url = reverse('trips:trip_track_apply', kwargs={'trip_id': self.TRIP_ID})
+
+    def test_page_lists_only_the_fields_that_would_change(self):
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        fields = [c['field'] for c in response.context['conflicts']]
+        # Ascent, duration and date differ; descent is 0 and the points are
+        # blank, so those were filled in already and are not up for debate.
+        self.assertEqual(set(fields), {'meters_ascend', 'length_hours', 'trip_completed_on'})
+
+        self.assertContains(response, '111 m')      # current
+        self.assertContains(response, '500 m')      # from the GPX
+        self.assertContains(response, '2024-01-02')
+        self.assertContains(response, '2025-07-12')
+
+    def test_confirming_writes_only_the_selected_fields(self):
+        response = self.client.post(self.url, {'fields': ['meters_ascend', 'length_hours']})
+
+        self.assertRedirects(
+            response,
+            reverse('trips:trip_edit', kwargs={'trip_id': self.TRIP_ID}),
+            fetch_redirect_response=False,
+        )
+
+        _, updates = self.table.update_trip.call_args[0]
+        self.assertEqual(updates, {'meters_ascend': 500, 'length_hours': 0.5})
+
+    def test_declining_writes_nothing(self):
+        response = self.client.post(self.url, {})
+
+        self.assertEqual(response.status_code, 302)
+        self.table.update_trip.assert_not_called()
+
+    def test_a_trip_whose_values_already_match_skips_the_page(self):
+        self.table.get_trip_by_id.return_value = {
+            'row_key': self.TRIP_ID, 'title': 'Sněžka',
+            'meters_ascend': 500, 'meters_descend': 400, 'length_hours': 0.5,
+            'trip_completed_on': '2025-07-12',
+            'parking_json': json.dumps(self.STATS['start']),
+            'high_point_json': json.dumps(self.STATS['high_point']),
+            'track_json': json.dumps(self.STATS),
+        }
+
+        response = self.client.get(self.url)
+
+        self.assertRedirects(
+            response,
+            reverse('trips:trip_edit', kwargs={'trip_id': self.TRIP_ID}),
+            fetch_redirect_response=False,
+        )
+
+    def test_requires_staff(self):
+        self.client.logout()
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/accounts/login/', response['Location'])
 
 
 class TrackViewTests(TestCase):

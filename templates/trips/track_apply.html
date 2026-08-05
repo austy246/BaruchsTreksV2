@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+
+{% block title %}Přepsat údaje z GPX - {{ trip.title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-9">
+        <h1 class="mb-3">Přepsat údaje z GPX?</h1>
+        <p class="text-muted">
+            Trasa u tripu <strong>{{ trip.title }}</strong> je nahraná
+            ({{ track_stats.distance_km }} km, &uarr;{{ track_stats.meters_ascend }} m).
+            Tyhle údaje ale trip už má vyplněné a z GPX vycházejí jinak &ndash; vyber,
+            co se má přepsat.
+        </p>
+
+        <form method="post">
+            {% csrf_token %}
+            <div class="card mb-3">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead>
+                            <tr>
+                                <th style="width: 3rem;"></th>
+                                <th>Pole</th>
+                                <th>Současná hodnota</th>
+                                <th>Hodnota z GPX</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for conflict in conflicts %}
+                            <tr>
+                                <td>
+                                    <input class="form-check-input" type="checkbox" name="fields"
+                                           value="{{ conflict.field }}" id="field_{{ conflict.field }}" checked>
+                                </td>
+                                <td><label class="form-check-label" for="field_{{ conflict.field }}">{{ conflict.label }}</label></td>
+                                <td class="text-muted">{{ conflict.current }}</td>
+                                <td><strong>{{ conflict.new }}</strong></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-check2"></i> Přepsat vybrané
+            </button>
+            <a href="{% url 'trips:trip_edit' trip_id=trip.row_key %}" class="btn btn-outline-secondary">
+                Nechat beze změny
+            </a>
+        </form>
+
+        <p class="text-muted small mt-3">
+            Trasa i její statistiky jsou uložené tak jako tak &ndash; tohle rozhoduje jen
+            o polích tripu. Vrchol je nejvyšší bod trasy, což nemusí být vrchol, o který
+            šlo; přepsat ho můžeš a pak značku posunout na mapě v editaci.
+        </p>
+    </div>
+</div>
+{% endblock %}

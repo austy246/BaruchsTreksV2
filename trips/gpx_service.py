@@ -252,6 +252,22 @@ def geojson_bytes(parsed):
     return json.dumps(parsed['geojson'], separators=(',', ':')).encode('utf-8')
 
 
+def track_record(parsed):
+    """The statistics stored in the table alongside the track.
+
+    On top of the summary numbers this carries the points the trip form can be
+    filled from, so offering those values again later needs neither the GPX file
+    nor a re-parse.
+    """
+    record = dict(parsed['stats'])
+    record['start'] = parsed['start']
+    if parsed.get('high_point'):
+        record['high_point'] = parsed['high_point']
+    if parsed.get('started_at'):
+        record['started_on'] = parsed['started_at'].date().isoformat()
+    return record
+
+
 def build_gpx(name, points, activity_time=None):
     """Build a GPX document from ``(lat, lng, elevation, time)`` tuples.
 

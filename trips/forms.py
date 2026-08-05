@@ -128,9 +128,6 @@ class TripEditForm(forms.Form):
                                   'class': 'form-control',
                                   'accept': '.gpx,application/gpx+xml'
                               }))
-    gpx_autofill = forms.BooleanField(required=False, initial=True,
-                                     widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}))
-
     # Location fields (hidden)
     parking_json = forms.CharField(required=False, widget=forms.HiddenInput())
     high_point_json = forms.CharField(required=False, widget=forms.HiddenInput())

@@ -114,16 +114,26 @@ watch, open the activity in Garmin Connect and choose ⚙ → *Export to GPX*
 (activities recorded as courses export as `<rte>` instead of `<trk>`; both are
 accepted).
 
-With **autofill** ticked, the values derived from the GPX fill in the elevation
-gain, elevation loss, duration and the start/high point of the trip. A
-completion date that is already filled in is left alone.
+A GPX can supply six trip fields: elevation gain, elevation loss, duration,
+completion date, start point and high point. What happens to them depends on
+whether the trip already has them:
 
-These are a starting point, not a verdict — the high point is simply the highest
-coordinate in the file, which is not always the summit the trip was about. So an
-upload with autofill lands back in the editor with the values filled in and the
-track drawn on the map, ready for the high point marker to be dragged where it
-belongs before saving again. Unticking autofill saves straight away and keeps
-whatever was typed; the track and its statistics are stored either way.
+- **Blank fields are filled in straight away.** Nothing is lost, so nothing is
+  asked. The upload lands back in the editor with the values in place and the
+  track drawn on the map, ready to be adjusted before saving again.
+- **Fields that already hold something are never overwritten silently.** The
+  upload goes to a confirmation page listing each one with its current value
+  beside the value from the GPX, pre-ticked, and only the ticked ones are
+  written. A value that already matches the GPX is not a conflict and is not
+  listed.
+
+The track and its statistics are stored either way — the confirmation decides
+only what happens to the trip's own fields.
+
+This matters most for the high point, which is simply the highest coordinate in
+the file. That is usually the summit the trip was about, but not always, so
+after taking it from the GPX the marker can be dragged along the track on the
+editing map and saved.
 
 ### Importing from Strava
 

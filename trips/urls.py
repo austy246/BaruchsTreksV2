@@ -13,6 +13,7 @@ urlpatterns = [
     path('trip/<str:trip_id>/delete/', views.trip_delete, name='trip_delete'),
     path('trip/<str:trip_id>/track.geojson', views.trip_track_geojson, name='trip_track_geojson'),
     path('trip/<str:trip_id>/track.gpx', views.trip_track_download, name='trip_track_download'),
+    path('trip/<str:trip_id>/track/apply/', views.trip_track_apply, name='trip_track_apply'),
     path('trip/<str:trip_id>/track/delete/', views.trip_track_delete, name='trip_track_delete'),
     path('strava/', views.strava_activities, name='strava_activities'),
     path('strava/connect/', views.strava_connect, name='strava_connect'),

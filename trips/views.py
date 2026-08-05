@@ -14,7 +14,7 @@ from django.views.decorators.http import require_POST
 from .azure_service import AzureTableService
 from .blob_service import AzureBlobService, AzureTrackService
 from .forms import TripEditForm
-from .gpx_service import GpxParseError, geojson_bytes, parse_gpx
+from .gpx_service import GpxParseError, geojson_bytes, parse_gpx, track_record
 from .strava_service import (
     StravaError,
     StravaNotConfigured,
@@ -96,32 +96,124 @@ def track_stats(trip):
         return None
 
 
-def apply_gpx_to_trip_data(parsed, trip_data, autofill):
-    """Fold a parsed GPX into the trip data that is about to be saved.
+# Trip fields a GPX can supply, in the order they are listed for confirmation
+GPX_FIELDS = (
+    ('meters_ascend', 'Převýšení nahoru'),
+    ('meters_descend', 'Převýšení dolů'),
+    ('length_hours', 'Délka trvání'),
+    ('trip_completed_on', 'Datum'),
+    ('parking_json', 'Bod startu'),
+    ('high_point_json', 'Vrchol'),
+)
 
-    The statistics always go in, since they describe the track itself. The trip
-    fields are only touched when the user asked for it: ascent, descent, length
-    and the start/high point are taken from the GPX, while the completion date
-    is filled in only when it is still empty.
-    """
-    stats = parsed['stats']
-    trip_data['track_json'] = json.dumps(stats)
 
-    if not autofill:
-        return
+def derived_from_track(stats):
+    """The trip field values a stored track can supply, as {field: value}."""
+    derived = {}
+    if not stats:
+        return derived
 
-    trip_data['meters_ascend'] = stats['meters_ascend']
-    trip_data['meters_descend'] = stats['meters_descend']
-
+    if stats.get('meters_ascend') is not None:
+        derived['meters_ascend'] = stats['meters_ascend']
+    if stats.get('meters_descend') is not None:
+        derived['meters_descend'] = stats['meters_descend']
     if stats.get('duration_hours'):
-        trip_data['length_hours'] = stats['duration_hours']
+        derived['length_hours'] = stats['duration_hours']
+    if stats.get('started_on'):
+        derived['trip_completed_on'] = stats['started_on']
+    if stats.get('start'):
+        derived['parking_json'] = json.dumps(stats['start'])
+    if stats.get('high_point'):
+        derived['high_point_json'] = json.dumps(stats['high_point'])
 
-    trip_data['parking_json'] = json.dumps(parsed['start'])
-    if parsed.get('high_point'):
-        trip_data['high_point_json'] = json.dumps(parsed['high_point'])
+    return derived
 
-    if not trip_data.get('trip_completed_on') and parsed.get('started_at'):
-        trip_data['trip_completed_on'] = parsed['started_at'].date()
+
+def _is_blank(value):
+    """A zero ascent or an empty string both mean 'nothing entered here yet'."""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() in ('', 'none')
+    if isinstance(value, bool):
+        return not value
+    if isinstance(value, (int, float)):
+        return value == 0
+    return False
+
+
+def _coordinates(value):
+    """Read a coordinate pair out of a stored JSON string, rounded for compare."""
+    try:
+        data = value if isinstance(value, dict) else json.loads(value)
+        return (round(float(data['Latitude']), 5), round(float(data['Longtitude']), 5))
+    except (TypeError, ValueError, KeyError):
+        return None
+
+
+def _as_date_text(value):
+    return value.isoformat() if hasattr(value, 'isoformat') else str(value)[:10]
+
+
+def _same_value(field, current, new):
+    if field in ('parking_json', 'high_point_json'):
+        return _coordinates(current) == _coordinates(new)
+    if field == 'trip_completed_on':
+        return _as_date_text(current) == _as_date_text(new)
+    try:
+        return abs(float(current) - float(new)) < 0.01
+    except (TypeError, ValueError):
+        return str(current) == str(new)
+
+
+def _display_value(field, value):
+    """Render a value the way it is shown on the confirmation page."""
+    if field in ('parking_json', 'high_point_json'):
+        coordinates = _coordinates(value)
+        if not coordinates:
+            return '—'
+        text = f"{coordinates[0]:.5f}, {coordinates[1]:.5f}"
+        try:
+            data = value if isinstance(value, dict) else json.loads(value)
+            if data.get('Elevation'):
+                text += f" ({round(data['Elevation'])} m)"
+        except (TypeError, ValueError):
+            pass
+        return text
+    if field == 'trip_completed_on':
+        return _as_date_text(value)
+    if field == 'length_hours':
+        return f"{value} h"
+    return f"{value} m"
+
+
+def compare_with_track(derived, current):
+    """Split GPX values into ones that fill a blank and ones that would overwrite.
+
+    Filling a blank costs the user nothing, so it happens straight away. Anything
+    that would replace a value already entered is returned for confirmation.
+    """
+    fills = {}
+    conflicts = []
+
+    for field, label in GPX_FIELDS:
+        if field not in derived:
+            continue
+
+        new = derived[field]
+        existing = current.get(field)
+
+        if _is_blank(existing):
+            fills[field] = new
+        elif not _same_value(field, existing, new):
+            conflicts.append({
+                'field': field,
+                'label': label,
+                'current': _display_value(field, existing),
+                'new': _display_value(field, new),
+            })
+
+    return fills, conflicts
 
 
 def index(request):
@@ -268,10 +360,12 @@ def trip_edit(request, trip_id=None):
                     'high_point_json': form.cleaned_data['high_point_json'],
                 }
 
-                # Parse an uploaded GPX before saving, so its statistics can be
+                # Parse an uploaded GPX before saving, so its values can be
                 # folded into the very same write.
                 gpx_bytes = None
                 parsed_gpx = None
+                gpx_fills = {}
+                gpx_conflicts = []
                 gpx_file = form.cleaned_data.get('gpx_file')
 
                 if gpx_file:
@@ -291,9 +385,15 @@ def trip_edit(request, trip_id=None):
                             'strava_configured': get_strava_service().is_configured,
                         })
 
-                    apply_gpx_to_trip_data(
-                        parsed_gpx, trip_data, form.cleaned_data.get('gpx_autofill')
+                    record = track_record(parsed_gpx)
+                    trip_data['track_json'] = json.dumps(record)
+
+                    # Blanks are filled right away; anything that would replace
+                    # an entered value waits for the user to confirm it.
+                    gpx_fills, gpx_conflicts = compare_with_track(
+                        derived_from_track(record), trip_data
                     )
+                    trip_data.update(gpx_fills)
 
                 if is_new_trip:
                     # Create new trip in Azure Table Storage
@@ -358,15 +458,25 @@ def trip_edit(request, trip_id=None):
                         if not success:
                             logger.warning(f"Error uploading photo: {result}")
 
+                # The GPX wants to replace values that are already filled in, so
+                # ask before touching them.
+                if gpx_conflicts:
+                    if gpx_fills:
+                        messages.info(
+                            request,
+                            f'Prázdná pole ({len(gpx_fills)}) jsou předvyplněná z GPX.'
+                        )
+                    return redirect('trips:trip_track_apply', trip_id=trip_id)
+
                 # Values taken from a GPX are a starting point, not a verdict -
                 # the high point in particular is only the highest coordinate,
                 # which is not always the summit the trip was about. So stay in
                 # the editor with them filled in, ready to be corrected.
-                if parsed_gpx and form.cleaned_data.get('gpx_autofill'):
+                if gpx_fills:
                     messages.info(
                         request,
-                        'Převýšení, délka a body startu/vrcholu jsou předvyplněné z GPX. '
-                        'Můžeš je upravit (vrchol přetažením značky na mapě) a uložit znovu.'
+                        'Prázdná pole jsou předvyplněná z GPX. Můžeš je upravit '
+                        '(vrchol přetažením značky na mapě) a uložit znovu.'
                     )
                     return redirect('trips:trip_edit', trip_id=trip_id)
 
@@ -495,6 +605,51 @@ def trip_track_download(request, trip_id):
     response = HttpResponse(payload, content_type='application/gpx+xml')
     response['Content-Disposition'] = f'attachment; filename="{trip_id}.gpx"'
     return response
+
+
+@admin_required
+def trip_track_apply(request, trip_id):
+    """Ask before letting a GPX overwrite values the trip already has."""
+    service = get_data_service()
+    trip = service.get_trip_by_id(trip_id)
+
+    if not trip:
+        return HttpResponse("Trip not found", status=404)
+
+    stats = track_stats(trip)
+    derived = derived_from_track(stats)
+    _, conflicts = compare_with_track(derived, trip)
+
+    if not conflicts:
+        # Nothing left to decide - the values match, or the track is gone
+        return redirect('trips:trip_edit', trip_id=trip_id)
+
+    if request.method == 'POST':
+        chosen = set(request.POST.getlist('fields'))
+        updates = {
+            conflict['field']: derived[conflict['field']]
+            for conflict in conflicts if conflict['field'] in chosen
+        }
+
+        if not updates:
+            messages.info(request, 'Hodnoty zůstaly beze změny.')
+            return redirect('trips:trip_edit', trip_id=trip_id)
+
+        success, message = service.update_trip(trip_id, updates)
+        if not success:
+            logger.error(f"Error applying track values to {trip_id}: {message}")
+            messages.error(request, f'Uložení selhalo: {message}')
+            return redirect('trips:trip_edit', trip_id=trip_id)
+
+        labels = [c['label'] for c in conflicts if c['field'] in chosen]
+        messages.success(request, 'Přepsáno z GPX: ' + ', '.join(labels) + '.')
+        return redirect('trips:trip_edit', trip_id=trip_id)
+
+    return render(request, 'trips/track_apply.html', {
+        'trip': trip,
+        'conflicts': conflicts,
+        'track_stats': stats,
+    })
 
 
 @admin_required
@@ -633,7 +788,10 @@ def strava_import(request, activity_id):
         messages.error(request, str(e))
         return redirect('trips:strava_activities')
 
-    trip_data = {}
+    record = track_record(parsed)
+    trip_data = {'track_json': json.dumps(record)}
+    derived = derived_from_track(record)
+    conflicts = []
 
     if trip_id:
         trip = service.get_trip_by_id(trip_id)
@@ -641,9 +799,9 @@ def strava_import(request, activity_id):
             messages.error(request, 'Trip nebyl nalezen.')
             return redirect('trips:strava_activities')
 
-        # Keep a date the user already picked; the GPX only fills a blank one.
-        trip_data['trip_completed_on'] = trip.get('trip_completed_on') or None
-        apply_gpx_to_trip_data(parsed, trip_data, autofill=True)
+        # Same rule as an upload: fill the blanks, ask about the rest
+        fills, conflicts = compare_with_track(derived, trip)
+        trip_data.update(fills)
 
         success, message = service.update_trip(trip_id, trip_data)
         if not success:
@@ -651,9 +809,11 @@ def strava_import(request, activity_id):
             return redirect('trips:strava_activities')
     else:
         trip_data['title'] = activity['name'] or f"Strava {activity_id}"
-        trip_data['trip_completed_on'] = activity.get('start_date')
         trip_data['trip_class'] = STRAVA_TRIP_CLASS.get(activity.get('sport_type'), '')
-        apply_gpx_to_trip_data(parsed, trip_data, autofill=True)
+        trip_data.update(derived)
+        # A brand new trip has nothing to overwrite, so Strava's own date wins
+        if activity.get('start_date'):
+            trip_data['trip_completed_on'] = activity['start_date']
 
         success, message, trip_id = service.create_trip(trip_data)
         if not success:
@@ -671,6 +831,9 @@ def strava_import(request, activity_id):
         )
     else:
         messages.error(request, f'Trasu se nepodařilo uložit: {error}')
+
+    if conflicts:
+        return redirect('trips:trip_track_apply', trip_id=trip_id)
 
     return redirect('trips:trip_edit', trip_id=trip_id)
 
