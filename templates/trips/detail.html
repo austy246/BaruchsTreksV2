@@ -22,6 +22,40 @@
     .stat-item {
         margin-bottom: 10px;
     }
+    .elevation-profile {
+        position: relative;
+        margin-top: 1rem;
+    }
+    .elevation-profile svg {
+        display: block;
+        width: 100%;
+        touch-action: none;
+    }
+    .elevation-profile .grid-line {
+        stroke: #dee2e6;
+        stroke-width: 1;
+    }
+    .elevation-profile .axis-label {
+        fill: #6c757d;
+        font-size: 11px;
+    }
+    .elevation-profile .cursor-line {
+        stroke: #6c757d;
+        stroke-width: 1;
+        stroke-dasharray: 3 3;
+    }
+    .elevation-tooltip {
+        position: absolute;
+        top: 0;
+        transform: translateX(-50%);
+        background-color: rgba(33, 37, 41, 0.9);
+        color: #fff;
+        font-size: 12px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        pointer-events: none;
+        white-space: nowrap;
+    }
 </style>
 <!-- Add Leaflet CSS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
@@ -109,6 +143,10 @@
                     <button type="button" id="trackingMapBtn" class="btn btn-outline-secondary btn-sm active">Tracking Map</button>
                     <button type="button" id="winterMapBtn" class="btn btn-outline-secondary btn-sm">Winter Map</button>
                 </div>
+                {% if track_stats.max_elevation %}
+                <!-- Filled in once the track has loaded -->
+                <div id="elevationProfile" class="elevation-profile"></div>
+                {% endif %}
             </div>
         </div>
         {% endif %}
@@ -338,6 +376,187 @@
 
         // Draw the GPX track, loaded separately so the page renders immediately
         {% if track_stats %}
+        var TRACK_COLOR = '#d63384';
+
+        // Distance in km between two GeoJSON [lng, lat] positions
+        function haversineKm(from, to) {
+            var toRad = Math.PI / 180;
+            var lat1 = from[1] * toRad, lat2 = to[1] * toRad;
+            var dLat = lat2 - lat1;
+            var dLng = (to[0] - from[0]) * toRad;
+            var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            return 6371 * 2 * Math.asin(Math.min(1, Math.sqrt(a)));
+        }
+
+        // Walk the track once, pairing every point that carries an elevation
+        // with how far along the track it sits.
+        function buildSamples(coordinates) {
+            var samples = [];
+            var distance = 0;
+            for (var i = 0; i < coordinates.length; i++) {
+                if (i > 0) {
+                    distance += haversineKm(coordinates[i - 1], coordinates[i]);
+                }
+                if (coordinates[i].length > 2) {
+                    samples.push({
+                        distance: distance,
+                        elevation: coordinates[i][2],
+                        lat: coordinates[i][1],
+                        lng: coordinates[i][0]
+                    });
+                }
+            }
+            return samples;
+        }
+
+        function renderElevationProfile(samples) {
+            var container = document.getElementById('elevationProfile');
+            if (!container || samples.length < 2) {
+                return;
+            }
+
+            var totalKm = samples[samples.length - 1].distance;
+            if (totalKm <= 0) {
+                return;
+            }
+
+            var elevations = samples.map(function(sample) { return sample.elevation; });
+            // Round the scale to whole 50 m steps so the labels read cleanly
+            var low = Math.floor(Math.min.apply(null, elevations) / 50) * 50;
+            var high = Math.ceil(Math.max.apply(null, elevations) / 50) * 50;
+            if (high === low) {
+                high = low + 50;
+            }
+
+            var hoverMarker = null;
+
+            function draw() {
+                var width = container.clientWidth || 640;
+                var height = 180;
+                var pad = {top: 12, right: 10, bottom: 24, left: 46};
+                var plotWidth = width - pad.left - pad.right;
+                var plotHeight = height - pad.top - pad.bottom;
+
+                function toX(distance) {
+                    return pad.left + (distance / totalKm) * plotWidth;
+                }
+                function toY(elevation) {
+                    return pad.top + (1 - (elevation - low) / (high - low)) * plotHeight;
+                }
+
+                var line = samples.map(function(sample, index) {
+                    return (index ? 'L' : 'M') + toX(sample.distance).toFixed(1) +
+                           ' ' + toY(sample.elevation).toFixed(1);
+                }).join(' ');
+                var area = line +
+                    ' L' + toX(totalKm).toFixed(1) + ' ' + (pad.top + plotHeight) +
+                    ' L' + pad.left + ' ' + (pad.top + plotHeight) + ' Z';
+
+                var parts = [];
+                for (var tick = 0; tick <= 4; tick++) {
+                    var elevation = low + (high - low) * tick / 4;
+                    var y = toY(elevation).toFixed(1);
+                    parts.push('<line class="grid-line" x1="' + pad.left + '" y1="' + y +
+                               '" x2="' + (width - pad.right) + '" y2="' + y + '"/>');
+                    parts.push('<text class="axis-label" x="' + (pad.left - 6) + '" y="' +
+                               (parseFloat(y) + 4) + '" text-anchor="end">' +
+                               Math.round(elevation) + '</text>');
+
+                    // The outer labels are anchored inwards so they cannot be
+                    // clipped by the edge of the chart
+                    var distance = totalKm * tick / 4;
+                    var anchor = tick === 0 ? 'start' : (tick === 4 ? 'end' : 'middle');
+                    parts.push('<text class="axis-label" x="' + toX(distance).toFixed(1) +
+                               '" y="' + (height - 6) + '" text-anchor="' + anchor + '">' +
+                               distance.toFixed(1) + ' km</text>');
+                }
+
+                container.innerHTML =
+                    '<svg viewBox="0 0 ' + width + ' ' + height + '" height="' + height + '">' +
+                    parts.join('') +
+                    '<path d="' + area + '" fill="' + TRACK_COLOR + '" fill-opacity="0.15"/>' +
+                    '<path d="' + line + '" fill="none" stroke="' + TRACK_COLOR + '" stroke-width="2"/>' +
+                    '<line class="cursor-line" id="elevationCursor" x1="0" y1="' + pad.top +
+                    '" x2="0" y2="' + (pad.top + plotHeight) + '" style="display:none"/>' +
+                    '</svg>' +
+                    '<div class="elevation-tooltip" id="elevationTooltip" style="display:none"></div>';
+
+                var svg = container.querySelector('svg');
+                var cursor = document.getElementById('elevationCursor');
+                var tooltip = document.getElementById('elevationTooltip');
+
+                function clearHover() {
+                    cursor.style.display = 'none';
+                    tooltip.style.display = 'none';
+                    if (hoverMarker) {
+                        map.removeLayer(hoverMarker);
+                        hoverMarker = null;
+                    }
+                }
+
+                // Moving along the profile marks the matching spot on the map.
+                // pointermove covers both the mouse and a dragging finger; the
+                // svg has touch-action: none so the drag does not scroll away.
+                svg.addEventListener('pointermove', function(event) {
+                    var bounds = svg.getBoundingClientRect();
+                    var scale = width / bounds.width;
+                    var distance = ((event.clientX - bounds.left) * scale - pad.left) / plotWidth * totalKm;
+
+                    var nearest = samples[0];
+                    for (var i = 1; i < samples.length; i++) {
+                        if (Math.abs(samples[i].distance - distance) < Math.abs(nearest.distance - distance)) {
+                            nearest = samples[i];
+                        }
+                    }
+
+                    var x = toX(nearest.distance);
+                    cursor.setAttribute('x1', x);
+                    cursor.setAttribute('x2', x);
+                    cursor.style.display = '';
+
+                    tooltip.textContent = nearest.distance.toFixed(1) + ' km · ' +
+                                          Math.round(nearest.elevation) + ' m';
+                    tooltip.style.display = '';
+                    // Keep the centered tooltip inside the chart at both ends
+                    var half = tooltip.offsetWidth / 2;
+                    tooltip.style.left = Math.min(bounds.width - half, Math.max(half, x / scale)) + 'px';
+
+                    if (!hoverMarker) {
+                        hoverMarker = L.circleMarker([nearest.lat, nearest.lng], {
+                            radius: 6, color: TRACK_COLOR, weight: 3,
+                            fillColor: '#fff', fillOpacity: 1
+                        }).addTo(map);
+                    } else {
+                        hoverMarker.setLatLng([nearest.lat, nearest.lng]);
+                    }
+                });
+
+                svg.addEventListener('pointerleave', function(event) {
+                    // Lifting a finger ends the pointer, so on touch the mark
+                    // stays put until the next tap somewhere else.
+                    if (event.pointerType !== 'touch') {
+                        clearHover();
+                    }
+                });
+
+                document.addEventListener('pointerdown', function(event) {
+                    if (!svg.contains(event.target)) {
+                        clearHover();
+                    }
+                });
+            }
+
+            draw();
+
+            // The chart is sized in pixels, so it has to be rebuilt on resize
+            var resizeTimer = null;
+            window.addEventListener('resize', function() {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(draw, 150);
+            });
+        }
+
         fetch('{% url "trips:trip_track_geojson" trip_id=trip.row_key %}')
             .then(function(response) {
                 if (!response.ok) {
@@ -347,10 +566,12 @@
             })
             .then(function(geojson) {
                 var track = L.geoJSON(geojson, {
-                    style: {color: '#d63384', weight: 4, opacity: 0.85}
+                    style: {color: TRACK_COLOR, weight: 4, opacity: 0.85}
                 }).addTo(map);
                 // The track covers more ground than the markers do
                 map.fitBounds(track.getBounds().pad(0.1));
+
+                renderElevationProfile(buildSamples(geojson.geometry.coordinates));
             })
             .catch(function(error) {
                 console.error('Error loading track:', error);

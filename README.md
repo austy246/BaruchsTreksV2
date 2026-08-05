@@ -100,6 +100,13 @@ This project is configured for continuous deployment to Azure Web App using GitH
 A trip can carry one GPX track, shown as a line on the trip map with the
 original file offered for download.
 
+Below the map sits an elevation profile. Moving along it — with the mouse or by
+dragging a finger — marks the matching spot on the map and shows the distance
+and elevation at that point, the way Garmin Connect does. On touch the mark
+stays after the finger lifts and clears on the next tap elsewhere. The chart is
+plain inline SVG drawn from the track's own coordinates, so it needs no charting
+library and no extra request.
+
 ### Uploading a track
 
 In the trip edit form, section **Trasa (GPX)**. To get the file out of a Garmin
