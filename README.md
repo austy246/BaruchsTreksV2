@@ -114,9 +114,16 @@ watch, open the activity in Garmin Connect and choose ⚙ → *Export to GPX*
 (activities recorded as courses export as `<rte>` instead of `<trk>`; both are
 accepted).
 
-With **autofill** ticked, the values derived from the GPX replace the elevation
+With **autofill** ticked, the values derived from the GPX fill in the elevation
 gain, elevation loss, duration and the start/high point of the trip. A
 completion date that is already filled in is left alone.
+
+These are a starting point, not a verdict — the high point is simply the highest
+coordinate in the file, which is not always the summit the trip was about. So an
+upload with autofill lands back in the editor with the values filled in and the
+track drawn on the map, ready for the high point marker to be dragged where it
+belongs before saving again. Unticking autofill saves straight away and keeps
+whatever was typed; the track and its statistics are stored either way.
 
 ### Importing from Strava
 

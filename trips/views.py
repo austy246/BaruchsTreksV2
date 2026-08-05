@@ -357,7 +357,19 @@ def trip_edit(request, trip_id=None):
                         success, result = blob_service.upload_photo(trip_id, photo_file)
                         if not success:
                             logger.warning(f"Error uploading photo: {result}")
-                
+
+                # Values taken from a GPX are a starting point, not a verdict -
+                # the high point in particular is only the highest coordinate,
+                # which is not always the summit the trip was about. So stay in
+                # the editor with them filled in, ready to be corrected.
+                if parsed_gpx and form.cleaned_data.get('gpx_autofill'):
+                    messages.info(
+                        request,
+                        'Převýšení, délka a body startu/vrcholu jsou předvyplněné z GPX. '
+                        'Můžeš je upravit (vrchol přetažením značky na mapě) a uložit znovu.'
+                    )
+                    return redirect('trips:trip_edit', trip_id=trip_id)
+
                 # Redirect to trip detail page
                 return redirect('trips:trip_detail', trip_id=trip_id)
             else:

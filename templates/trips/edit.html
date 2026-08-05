@@ -223,7 +223,13 @@ Edit {{ trip.title }} - Baruch's Treks
                 <h5 class="section-title">Map Locations</h5>
                 
                 <div class="map-instructions">
-                    <p><strong>Instructions:</strong> Click the buttons below to select which marker to place, then click on the map to set the location.</p>
+                    <p{% if track_stats %} class="mb-1"{% endif %}><strong>Instructions:</strong> Click the buttons below to select which marker to place, then click on the map to set the location.</p>
+                    {% if track_stats %}
+                    <p class="mb-0">
+                        Trasa z GPX je na mapě vyznačená růžově. Vrchol je předvyplněný nejvyšším
+                        bodem trasy &ndash; pokud sedět nemá, přetáhni značku na správné místo.
+                    </p>
+                    {% endif %}
                 </div>
                 
                 <div class="mb-3">
@@ -494,7 +500,24 @@ Edit {{ trip.title }} - Baruch's Treks
         let parkingMarker = null;
         let highPointMarker = null;
         let currentMode = null;
-        
+        let connectorLine = null;
+        let trackLayer = null;
+
+        // A straight line between the two markers hints at the route, but once
+        // the real GPX track is on the map it would only be noise.
+        function updateConnectorLine() {
+            if (connectorLine) {
+                map.removeLayer(connectorLine);
+                connectorLine = null;
+            }
+            if (!trackLayer && parkingMarker && highPointMarker) {
+                connectorLine = L.polyline([
+                    parkingMarker.getLatLng(),
+                    highPointMarker.getLatLng()
+                ], {color: 'red', weight: 3}).addTo(map);
+            }
+        }
+
         // Get the hidden input fields
         const parkingJsonInput = document.getElementById('{{ form.parking_json.id_for_label }}');
         const highPointJsonInput = document.getElementById('{{ form.high_point_json.id_for_label }}');
@@ -569,15 +592,7 @@ Edit {{ trip.title }} - Baruch's Treks
             if (parkingMarker && highPointMarker) {
                 const group = new L.featureGroup([parkingMarker, highPointMarker]);
                 map.fitBounds(group.getBounds().pad(0.1));
-                
-                // Draw a line between the two points
-                const routeLine = L.polyline([
-                    parkingMarker.getLatLng(),
-                    highPointMarker.getLatLng()
-                ], {
-                    color: 'red',
-                    weight: 3
-                }).addTo(map);
+                updateConnectorLine();
             } else if (parkingMarker) {
                 map.setView(parkingMarker.getLatLng(), 14);
             } else if (highPointMarker) {
@@ -601,6 +616,7 @@ Edit {{ trip.title }} - Baruch's Treks
             
             // Update the display
             parkingCoordsDiv.innerHTML = `Lat: <span id="parkingLat">${lat.toFixed(6)}</span>, Lng: <span id="parkingLng">${lng.toFixed(6)}</span>`;
+            updateConnectorLine();
         }
         
         // Function to update high point coordinates
@@ -617,6 +633,7 @@ Edit {{ trip.title }} - Baruch's Treks
             
             // Update the display
             highPointCoordsDiv.innerHTML = `Lat: <span id="highPointLat">${lat.toFixed(6)}</span>, Lng: <span id="highPointLng">${lng.toFixed(6)}</span>`;
+            updateConnectorLine();
         }
         
         // Button click handlers
@@ -653,6 +670,8 @@ Edit {{ trip.title }} - Baruch's Treks
                 highPointCoordsDiv.innerHTML = 'No finish point location set';
             }
             
+            updateConnectorLine();
+
             // Reset mode
             currentMode = null;
             document.getElementById('parkingBtn').classList.remove('btn-primary');
@@ -716,25 +735,30 @@ Edit {{ trip.title }} - Baruch's Treks
                 updateHighPointCoordinates(e.latlng);
             }
             
-            // If both markers exist, draw a line between them
-            if (parkingMarker && highPointMarker) {
-                // Remove existing lines
-                map.eachLayer(function(layer) {
-                    if (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) {
-                        map.removeLayer(layer);
-                    }
-                });
-                
-                // Draw new line
-                const routeLine = L.polyline([
-                    parkingMarker.getLatLng(),
-                    highPointMarker.getLatLng()
-                ], {
-                    color: 'red',
-                    weight: 3
-                }).addTo(map);
-            }
+            updateConnectorLine();
         });
+
+        {% if track_stats %}
+        // Show the uploaded track, so the start and high point can be placed
+        // against it - the highest coordinate is not always the right summit.
+        fetch('{% url "trips:trip_track_geojson" trip_id=trip.row_key %}')
+            .then(function(response) {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.json();
+            })
+            .then(function(geojson) {
+                trackLayer = L.geoJSON(geojson, {
+                    style: {color: '#d63384', weight: 4, opacity: 0.85}
+                }).addTo(map);
+                map.fitBounds(trackLayer.getBounds().pad(0.1));
+                updateConnectorLine();
+            })
+            .catch(function(error) {
+                console.error('Error loading track:', error);
+            });
+        {% endif %}
     });
 </script>
 {% endblock %}

@@ -298,7 +298,13 @@ class TripEditGpxUploadTests(TestCase):
     def test_upload_fills_trip_fields_and_stores_the_track(self):
         response = self.post_new_trip(self.GPX)
 
-        self.assertEqual(response.status_code, 302)
+        # Autofilled values are a starting point, so the editor stays open for
+        # them to be corrected rather than jumping to the detail page.
+        self.assertRedirects(
+            response,
+            reverse('trips:trip_edit', kwargs={'trip_id': 'trip_20250712060000'}),
+            fetch_redirect_response=False,
+        )
 
         trip_data = self.table.create_trip.call_args[0][0]
         self.assertEqual(trip_data['meters_ascend'], 500)
@@ -319,8 +325,15 @@ class TripEditGpxUploadTests(TestCase):
         self.assertEqual(json.loads(geojson)['geometry']['type'], 'LineString')
 
     def test_autofill_off_keeps_the_typed_values(self):
-        self.post_new_trip(self.GPX, meters_ascend=111, meters_descend=222,
-                           length_hours=9, gpx_autofill='')
+        response = self.post_new_trip(self.GPX, meters_ascend=111, meters_descend=222,
+                                      length_hours=9, gpx_autofill='')
+
+        # Nothing was derived, so there is nothing to review
+        self.assertRedirects(
+            response,
+            reverse('trips:trip_detail', kwargs={'trip_id': 'trip_20250712060000'}),
+            fetch_redirect_response=False,
+        )
 
         trip_data = self.table.create_trip.call_args[0][0]
         self.assertEqual(trip_data['meters_ascend'], 111)
@@ -356,9 +369,45 @@ class TripEditGpxUploadTests(TestCase):
     def test_saving_without_a_gpx_touches_no_blob(self):
         response = self.post_new_trip()
 
-        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(
+            response,
+            reverse('trips:trip_detail', kwargs={'trip_id': 'trip_20250712060000'}),
+            fetch_redirect_response=False,
+        )
         self.table.create_trip.assert_called_once()
         self.track_service.upload_track.assert_not_called()
+
+    def test_adding_a_gpx_to_an_existing_trip_returns_to_the_editor(self):
+        self.table.get_trip_by_id.return_value = {
+            'row_key': 'trip_existing', 'title': 'Sněžka', 'description': '',
+            'trip_completed_on': '2024-01-02', 'location': '', 'difficulty': '',
+            'parking_json': '', 'high_point_json': '', 'track_json': '',
+        }
+
+        response = self.client.post(
+            reverse('trips:trip_edit', kwargs={'trip_id': 'trip_existing'}),
+            {'title': 'Sněžka', 'description': '', 'participants': '',
+             'trip_completed_on': '2024-01-02',
+             'parking_json': '', 'high_point_json': '', 'gpx_autofill': 'on',
+             'gpx_file': SimpleUploadedFile('activity.gpx', self.GPX,
+                                            content_type='application/gpx+xml')},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse('trips:trip_edit', kwargs={'trip_id': 'trip_existing'}),
+            fetch_redirect_response=False,
+        )
+
+        trip_id, _, _ = self.track_service.upload_track.call_args[0]
+        self.assertEqual(trip_id, 'trip_existing')
+
+        row_key, trip_data = self.table.update_trip.call_args[0]
+        self.assertEqual(row_key, 'trip_existing')
+        self.assertEqual(trip_data['meters_ascend'], 500)
+        self.assertEqual(json.loads(trip_data['high_point_json'])['Latitude'], 50.001)
+        # The date already on the trip is not replaced by the GPX one
+        self.assertEqual(trip_data['trip_completed_on'].isoformat(), '2024-01-02')
 
 
 class TrackViewTests(TestCase):
