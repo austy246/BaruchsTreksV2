@@ -207,3 +207,141 @@ class AzureBlobService:
             '.heic': 'image/heic',
         }
         return content_types.get(extension, 'application/octet-stream')
+
+
+class AzureTrackService(AzureBlobService):
+    """Service for storing GPX tracks in Azure Blob Storage.
+
+    Tracks live in their own container so they never show up in list_photos().
+    Unlike photos they are served through Django rather than by blob URL, so the
+    container does not need public read access.
+    """
+
+    GPX_BLOB = 'track.gpx'
+    GEOJSON_BLOB = 'track.geojson'
+
+    CONTENT_TYPES = {
+        GPX_BLOB: 'application/gpx+xml',
+        GEOJSON_BLOB: 'application/geo+json',
+    }
+
+    def __init__(self, connection_string=None, container_name="tracks"):
+        super().__init__(connection_string=connection_string, container_name=container_name)
+
+    def _ensure_container(self):
+        """Get the container client, creating the container on first use."""
+        container_client = self.get_container_client()
+        if not container_client:
+            return None
+        try:
+            container_client.create_container()
+            logger.info(f"Created blob container: {self.container_name}")
+        except Exception:
+            # Already exists, which is the normal case.
+            pass
+        return container_client
+
+    def upload_track(self, trip_id, gpx_bytes, geojson_bytes):
+        """Store the original GPX plus the simplified GeoJSON for a trip.
+
+        Args:
+            trip_id (str): The trip's row key
+            gpx_bytes (bytes): The original GPX document
+            geojson_bytes (bytes): The simplified track as GeoJSON
+
+        Returns:
+            tuple: (success, error message or "")
+        """
+        if not self.connection_string:
+            logger.warning("No connection string available, cannot upload track")
+            return False, "No connection string available"
+
+        try:
+            container_client = self._ensure_container()
+            if not container_client:
+                return False, "Could not connect to blob container"
+
+            for blob_suffix, payload in ((self.GPX_BLOB, gpx_bytes), (self.GEOJSON_BLOB, geojson_bytes)):
+                blob_client = container_client.get_blob_client(f"{trip_id}/{blob_suffix}")
+                blob_client.upload_blob(
+                    payload,
+                    content_settings=ContentSettings(content_type=self.CONTENT_TYPES[blob_suffix]),
+                    overwrite=True,
+                )
+
+            logger.info(f"Successfully uploaded track for trip {trip_id}")
+            return True, ""
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Error uploading track for trip {trip_id}: {error_msg}", exc_info=True)
+            return False, error_msg
+
+    def download_track(self, trip_id, blob_suffix=GPX_BLOB):
+        """Download a stored track blob.
+
+        Args:
+            trip_id (str): The trip's row key
+            blob_suffix (str): Either GPX_BLOB or GEOJSON_BLOB
+
+        Returns:
+            bytes or None if the trip has no track.
+        """
+        if not self.connection_string:
+            logger.warning("No connection string available, cannot download track")
+            return None
+
+        try:
+            container_client = self.get_container_client()
+            if not container_client:
+                return None
+            blob_client = container_client.get_blob_client(f"{trip_id}/{blob_suffix}")
+            return blob_client.download_blob().readall()
+        except Exception as e:
+            logger.info(f"No track blob {blob_suffix} for trip {trip_id}: {str(e)}")
+            return None
+
+    def has_track(self, trip_id):
+        """Return True if a GPX track is stored for the trip."""
+        if not self.connection_string:
+            return False
+
+        try:
+            container_client = self.get_container_client()
+            if not container_client:
+                return False
+            return container_client.get_blob_client(f"{trip_id}/{self.GPX_BLOB}").exists()
+        except Exception as e:
+            logger.error(f"Error checking track for trip {trip_id}: {str(e)}", exc_info=True)
+            return False
+
+    def delete_track(self, trip_id):
+        """Delete both track blobs for a trip.
+
+        Returns:
+            bool: True if at least one blob was deleted.
+        """
+        if not self.connection_string:
+            logger.warning("No connection string available, cannot delete track")
+            return False
+
+        try:
+            container_client = self.get_container_client()
+            if not container_client:
+                return False
+
+            deleted = False
+            for blob_suffix in (self.GPX_BLOB, self.GEOJSON_BLOB):
+                try:
+                    container_client.get_blob_client(f"{trip_id}/{blob_suffix}").delete_blob()
+                    deleted = True
+                except Exception:
+                    # Missing blob, nothing to delete.
+                    pass
+
+            logger.info(f"Deleted track for trip {trip_id}: {deleted}")
+            return deleted
+
+        except Exception as e:
+            logger.error(f"Error deleting track for trip {trip_id}: {str(e)}", exc_info=True)
+            return False

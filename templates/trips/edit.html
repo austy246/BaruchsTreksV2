@@ -284,6 +284,57 @@ Edit {{ trip.title }} - Baruch's Treks
                 {{ form.parking_json }}
                 {{ form.high_point_json }}
                 
+                <h5 class="section-title">Trasa (GPX)</h5>
+
+                {% if track_stats %}
+                <div class="alert alert-success d-flex flex-wrap align-items-center gap-3">
+                    <div class="me-auto">
+                        <i class="bi bi-signpost-split"></i>
+                        <strong>{{ track_stats.distance_km }} km</strong>
+                        &middot; &uarr;{{ track_stats.meters_ascend }} m
+                        &middot; &darr;{{ track_stats.meters_descend }} m
+                        {% if track_stats.duration_hours %}&middot; {{ track_stats.duration_hours }} h{% endif %}
+                        <small class="text-muted d-block">
+                            {{ track_stats.point_count }} bodů (z původních {{ track_stats.original_point_count }})
+                        </small>
+                    </div>
+                    <a href="{% url 'trips:trip_track_download' trip_id=trip.row_key %}" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-download"></i> Stáhnout GPX
+                    </a>
+                    <button type="submit" form="trackDeleteForm" class="btn btn-sm btn-outline-danger">
+                        <i class="bi bi-trash"></i> Smazat trasu
+                    </button>
+                </div>
+                {% endif %}
+
+                <div class="row">
+                    <div class="col-12">
+                        <div class="form-group">
+                            <label for="{{ form.gpx_file.id_for_label }}" class="form-label">
+                                {% if track_stats %}Nahradit trasu{% else %}Nahrát GPX{% endif %}
+                            </label>
+                            {{ form.gpx_file }}
+                            <small class="form-text text-muted">
+                                Garmin Connect: otevři aktivitu &rarr; <i class="bi bi-gear"></i> &rarr; Export to GPX.
+                                {% if strava_configured and not is_new %}
+                                Nebo si trasu <a href="{% url 'trips:strava_activities' %}?trip_id={{ trip.row_key }}">stáhni rovnou ze Stravy</a>.
+                                {% endif %}
+                            </small>
+                            {% if form.gpx_file.errors %}
+                            <div class="invalid-feedback d-block">
+                                {{ form.gpx_file.errors }}
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="form-check">
+                            {{ form.gpx_autofill }}
+                            <label class="form-check-label" for="{{ form.gpx_autofill.id_for_label }}">
+                                Převzít z GPX převýšení, délku trvání a body startu/vrcholu (přepíše hodnoty výše)
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
                 <h5 class="section-title">Photos</h5>
                 
                 <div class="row">
@@ -340,6 +391,14 @@ Edit {{ trip.title }} - Baruch's Treks
                     {% endif %}
                 </div>
             </form>
+
+            {% if track_stats %}
+            <!-- Kept outside the edit form, HTML does not allow nested forms -->
+            <form id="trackDeleteForm" method="post"
+                  action="{% url 'trips:trip_track_delete' trip_id=trip.row_key %}">
+                {% csrf_token %}
+            </form>
+            {% endif %}
         </div>
     </div>
 </div>

@@ -128,6 +128,7 @@ class AzureTableService:
                     'timestamp': modified_at.isoformat() if modified_at else '',
                     'rowkey_dt': rowkey_dt,
                     'completed_at': completed_at,
+                    'track_json': entity.get('TrackJson', ''),
                     # Add any other fields needed by your templates
                 }
                 
@@ -214,6 +215,7 @@ class AzureTableService:
                 
                 'parking_json': entity.get('ParkingJson', ''),
                 'high_point_json': entity.get('HighPointJson', ''),
+                'track_json': entity.get('TrackJson', ''),
             }
             
             # Debug: Log the transformed trip data
@@ -312,7 +314,11 @@ class AzureTableService:
             if 'high_point_json' in trip_data and trip_data['high_point_json']:
                 entity['HighPointJson'] = trip_data['high_point_json']
                 print(f"Setting HighPointJson: {trip_data['high_point_json']}")
-            
+
+            # Track statistics (the GPX itself lives in Blob Storage)
+            if 'track_json' in trip_data and trip_data['track_json']:
+                entity['TrackJson'] = trip_data['track_json']
+
             # Update the entity in Azure Table
             print("Calling update_entity with entity:", entity)
             table_client.update_entity(entity=entity)
@@ -362,6 +368,7 @@ class AzureTableService:
                 'FerataGrade': trip_data.get('ferata_grade', ''),
                 'ParkingJson': trip_data.get('parking_json', ''),
                 'HighPointJson': trip_data.get('high_point_json', ''),
+                'TrackJson': trip_data.get('track_json', ''),
             }
             
             # Handle date fields
@@ -390,3 +397,85 @@ class AzureTableService:
             import traceback
             logger.error(traceback.format_exc())
             return False, error_msg, None
+
+    def merge_trip_fields(self, row_key, fields):
+        """Merge individual entity properties into a trip without touching the rest.
+
+        update_trip() rebuilds the whole entity and skips empty values, so it
+        cannot clear a field. This is the escape hatch for that, e.g. removing
+        TrackJson when a track is deleted.
+
+        Args:
+            row_key (str): The trip's row key
+            fields (dict): Entity property names mapped to their new values
+
+        Returns:
+            tuple: (success, error message or "")
+        """
+        if not self.connection_string:
+            logger.warning("No connection string available, cannot merge trip fields")
+            return False, "No connection string available"
+
+        try:
+            entity = {'PartitionKey': 'Trips', 'RowKey': row_key}
+            entity.update(fields)
+            self.get_table_client().update_entity(entity=entity)
+            logger.info(f"Merged fields {list(fields)} into trip {row_key}")
+            return True, ""
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Error merging fields into trip {row_key}: {error_msg}", exc_info=True)
+            return False, error_msg
+
+    # Small key/value rows kept in the same table under a separate partition, so
+    # they stay invisible to get_all_trips(). Used for Strava OAuth tokens.
+    CONFIG_PARTITION = 'Config'
+
+    def get_config(self, key):
+        """Return the stored config dict for a key, or None."""
+        if not self.connection_string:
+            return None
+
+        try:
+            entity = self.get_table_client().get_entity(
+                partition_key=self.CONFIG_PARTITION, row_key=key
+            )
+            raw = entity.get('Value')
+            return json.loads(raw) if raw else None
+        except Exception as e:
+            logger.info(f"No config entry '{key}': {str(e)}")
+            return None
+
+    def save_config(self, key, value):
+        """Store a JSON-serializable dict under a config key."""
+        if not self.connection_string:
+            logger.warning("No connection string available, cannot save config")
+            return False, "No connection string available"
+
+        try:
+            self.get_table_client().upsert_entity(entity={
+                'PartitionKey': self.CONFIG_PARTITION,
+                'RowKey': key,
+                'Value': json.dumps(value),
+            })
+            logger.info(f"Saved config entry '{key}'")
+            return True, ""
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Error saving config '{key}': {error_msg}", exc_info=True)
+            return False, error_msg
+
+    def delete_config(self, key):
+        """Remove a config key. Returns True when it is gone."""
+        if not self.connection_string:
+            return False
+
+        try:
+            self.get_table_client().delete_entity(
+                partition_key=self.CONFIG_PARTITION, row_key=key
+            )
+            logger.info(f"Deleted config entry '{key}'")
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting config '{key}': {str(e)}", exc_info=True)
+            return False

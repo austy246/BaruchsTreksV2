@@ -7,9 +7,11 @@ Second version of Baruch's Treks which is based on Azure Storage and Django.
 - Trip management with detailed information
 - Interactive maps using Mapy.cz API
 - Photo uploads for trips
+- GPX track uploads, drawn on the trip map (see [GPX tracks](#gpx-tracks))
+- Optional Strava import for tracks recorded on a Garmin device
 - Start and finish point markers on maps
 - Azure Table Storage for trip data
-- Azure Blob Storage for trip photos
+- Azure Blob Storage for trip photos and GPX tracks
 
 ## Deployment to Azure Web App
 
@@ -70,6 +72,7 @@ This project is configured for continuous deployment to Azure Web App using GitH
    - Add the following settings:
      - `BARUCHSTREKS_STORAGE_CONNECTION`: Your Azure Storage connection string
      - `MAPY_CZ_API_KEY`: Your Mapy.cz API key
+     - `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET`: Optional, enables the Strava track import
      - `DEBUG`: Set to "False"
      - `SECRET_KEY`: A secure Django secret key
      - `ALLOWED_HOSTS`: "b-treks.azurewebsites.net"
@@ -90,6 +93,58 @@ This project is configured for continuous deployment to Azure Web App using GitH
 4. Install dependencies: `pip install -r requirements.txt`
 5. Create a `.env` file with the required environment variables (see `.env.example`)
 6. Run the development server: `python manage.py runserver`
+7. Run the tests: `python manage.py test trips`
+
+## GPX tracks
+
+A trip can carry one GPX track, shown as a line on the trip map with the
+original file offered for download.
+
+### Uploading a track
+
+In the trip edit form, section **Trasa (GPX)**. To get the file out of a Garmin
+watch, open the activity in Garmin Connect and choose ⚙ → *Export to GPX*
+(activities recorded as courses export as `<rte>` instead of `<trk>`; both are
+accepted).
+
+With **autofill** ticked, the values derived from the GPX replace the elevation
+gain, elevation loss, duration and the start/high point of the trip. A
+completion date that is already filled in is left alone.
+
+### Importing from Strava
+
+Garmin devices sync to Strava automatically, and unlike Garmin's own Connect
+Developer Program — which is partner-approval only, for business use — Strava
+has a self-serve API. So Strava is used as the bridge: **Import trasy** in the
+navigation lists the connected athlete's activities and rebuilds the chosen one
+into a GPX file. It is optional; without credentials the page explains the setup
+and manual upload keeps working.
+
+1. Create an app at [strava.com/settings/api](https://www.strava.com/settings/api).
+2. Set *Authorization Callback Domain* to the site's domain (for local
+   development, `localhost`).
+3. Set `STRAVA_CLIENT_ID` and `STRAVA_CLIENT_SECRET` — as environment variables
+   locally, or as App Settings on the Azure Web App.
+
+Only the connecting user's own activities are read. OAuth tokens are stored in
+the `Trips` table under the `Config` partition, so they never show up among the
+trips, and can be revoked from the Strava page with *Odpojit Stravu*.
+
+### How a track is stored
+
+Azure Table Storage caps a string property at 64 KB, well below the size of a
+typical Garmin track, so only statistics land in the table (`TrackJson`) while
+the files go to Blob Storage, in a `tracks` container created on first upload:
+
+- `{trip_id}/track.gpx` — the original file, untouched
+- `{trip_id}/track.geojson` — the track simplified for the map
+
+Simplification is Ramer–Douglas–Peucker with a 5 m tolerance, capped at 2000
+points, which keeps a multi-hour track well under a hundred kilobytes. Elevation
+gain ignores changes below 3 m so GPS jitter does not inflate a flat walk.
+
+Both files are served through Django rather than by blob URL, so the container
+needs neither public read access nor a CORS rule.
 
 ## Security
 

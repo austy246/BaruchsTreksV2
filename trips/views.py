@@ -2,16 +2,25 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.conf import settings
 import json
+import secrets
 import traceback
 import logging
 from datetime import datetime, timezone
-from django.http import HttpResponse, HttpResponseServerError
+from django.http import HttpResponse, HttpResponseServerError, JsonResponse
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 from .azure_service import AzureTableService
-from .blob_service import AzureBlobService
+from .blob_service import AzureBlobService, AzureTrackService
 from .forms import TripEditForm
+from .gpx_service import GpxParseError, geojson_bytes, parse_gpx
+from .strava_service import (
+    StravaError,
+    StravaNotConfigured,
+    StravaNotConnected,
+    StravaService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +33,7 @@ def trip_delete(request, trip_id):
         try:
             table_client = service.get_table_client()
             table_client.delete_entity(partition_key='Trips', row_key=trip_id)
+            AzureTrackService().delete_track(trip_id)
             messages.success(request, 'Trip deleted successfully.')
         except Exception as e:
             logger.error(f"Error deleting trip {trip_id}: {str(e)}", exc_info=True)
@@ -68,6 +78,51 @@ def get_data_service():
         connection_string=connection_string,
         table_name=settings.AZURE_TABLE_NAME
     )
+
+def get_strava_service():
+    """Get the Strava service, backed by the Azure table for token storage"""
+    return StravaService(table_service=get_data_service())
+
+
+def track_stats(trip):
+    """Return the stored GPX statistics for a trip, or None."""
+    raw = (trip or {}).get('track_json')
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        logger.warning(f"Could not parse track_json for trip {trip.get('row_key')}")
+        return None
+
+
+def apply_gpx_to_trip_data(parsed, trip_data, autofill):
+    """Fold a parsed GPX into the trip data that is about to be saved.
+
+    The statistics always go in, since they describe the track itself. The trip
+    fields are only touched when the user asked for it: ascent, descent, length
+    and the start/high point are taken from the GPX, while the completion date
+    is filled in only when it is still empty.
+    """
+    stats = parsed['stats']
+    trip_data['track_json'] = json.dumps(stats)
+
+    if not autofill:
+        return
+
+    trip_data['meters_ascend'] = stats['meters_ascend']
+    trip_data['meters_descend'] = stats['meters_descend']
+
+    if stats.get('duration_hours'):
+        trip_data['length_hours'] = stats['duration_hours']
+
+    trip_data['parking_json'] = json.dumps(parsed['start'])
+    if parsed.get('high_point'):
+        trip_data['high_point_json'] = json.dumps(parsed['high_point'])
+
+    if not trip_data.get('trip_completed_on') and parsed.get('started_at'):
+        trip_data['trip_completed_on'] = parsed['started_at'].date()
+
 
 def index(request):
     """Landing page with trip previews"""
@@ -150,7 +205,8 @@ def trip_detail(request, trip_id):
         'parking_coords': json.dumps(parking_coords) if parking_coords else None,
         'high_point_coords': json.dumps(high_point_coords) if high_point_coords else None,
         'mapy_cz_api_key': settings.MAPY_CZ_API_KEY,
-        'trip_photos': trip_photos
+        'trip_photos': trip_photos,
+        'track_stats': track_stats(trip),
     })
 
 def admin_required(view_func):
@@ -211,7 +267,34 @@ def trip_edit(request, trip_id=None):
                     'parking_json': form.cleaned_data['parking_json'],
                     'high_point_json': form.cleaned_data['high_point_json'],
                 }
-                
+
+                # Parse an uploaded GPX before saving, so its statistics can be
+                # folded into the very same write.
+                gpx_bytes = None
+                parsed_gpx = None
+                gpx_file = form.cleaned_data.get('gpx_file')
+
+                if gpx_file:
+                    gpx_bytes = gpx_file.read()
+                    try:
+                        parsed_gpx = parse_gpx(gpx_bytes)
+                    except GpxParseError as e:
+                        logger.warning(f"Invalid GPX upload: {str(e)}")
+                        return render(request, 'trips/edit.html', {
+                            'form': form,
+                            'trip': trip,
+                            'trip_photos': trip_photos,
+                            'is_new': is_new_trip,
+                            'error': str(e),
+                            'mapy_cz_api_key': settings.MAPY_CZ_API_KEY,
+                            'track_stats': track_stats(trip),
+                            'strava_configured': get_strava_service().is_configured,
+                        })
+
+                    apply_gpx_to_trip_data(
+                        parsed_gpx, trip_data, form.cleaned_data.get('gpx_autofill')
+                    )
+
                 if is_new_trip:
                     # Create new trip in Azure Table Storage
                     success, message, new_trip_id = azure_service.create_trip(trip_data)
@@ -223,6 +306,7 @@ def trip_edit(request, trip_id=None):
                             'is_new': True,
                             'error': f"Error creating trip: {message}",
                             'mapy_cz_api_key': settings.MAPY_CZ_API_KEY,
+                            'strava_configured': get_strava_service().is_configured,
                         })
                     
                     # Set trip_id to the newly created trip's ID
@@ -247,8 +331,26 @@ def trip_edit(request, trip_id=None):
                             'is_new': False,
                             'error': f"Error updating trip: {message}",
                             'mapy_cz_api_key': settings.MAPY_CZ_API_KEY,
+                            'track_stats': track_stats(trip),
+                            'strava_configured': get_strava_service().is_configured,
                         })
                 
+                # Store the GPX track now that the trip has an id
+                if parsed_gpx:
+                    track_service = AzureTrackService()
+                    success, error = track_service.upload_track(
+                        trip_id, gpx_bytes, geojson_bytes(parsed_gpx)
+                    )
+                    if success:
+                        messages.success(
+                            request,
+                            f"Trasa nahrána: {parsed_gpx['stats']['distance_km']} km, "
+                            f"↑{parsed_gpx['stats']['meters_ascend']} m."
+                        )
+                    else:
+                        logger.error(f"Error uploading track: {error}")
+                        messages.error(request, f"Trasu se nepodařilo uložit: {error}")
+
                 # Handle photo uploads
                 if request.FILES.getlist('photos'):
                     for photo_file in request.FILES.getlist('photos'):
@@ -289,12 +391,14 @@ def trip_edit(request, trip_id=None):
             'form': form,
             'is_new': is_new_trip,
             'mapy_cz_api_key': settings.MAPY_CZ_API_KEY,
+            'strava_configured': get_strava_service().is_configured,
         }
-        
+
         if not is_new_trip:
             context.update({
                 'trip': trip,
                 'trip_photos': trip_photos,
+                'track_stats': track_stats(trip),
             })
         
         return render(request, 'trips/edit.html', context)
@@ -352,6 +456,212 @@ def all_trips(request):
         'future_count': len([trip for trip in all_trips if not trip.get('trip_completed_on')]),
         'total_count': len(all_trips),
     })
+
+def trip_track_geojson(request, trip_id):
+    """Serve the simplified track geometry for the map.
+
+    Tracks are proxied through Django rather than linked by blob URL, so the
+    container needs neither public read access nor a CORS rule.
+    """
+    payload = AzureTrackService().download_track(trip_id, AzureTrackService.GEOJSON_BLOB)
+
+    if payload is None:
+        return JsonResponse({'error': 'No track for this trip'}, status=404)
+
+    response = HttpResponse(payload, content_type='application/geo+json')
+    response['Cache-Control'] = 'public, max-age=3600'
+    return response
+
+
+def trip_track_download(request, trip_id):
+    """Download the original GPX file of a trip."""
+    payload = AzureTrackService().download_track(trip_id, AzureTrackService.GPX_BLOB)
+
+    if payload is None:
+        return HttpResponse("No track for this trip", status=404)
+
+    response = HttpResponse(payload, content_type='application/gpx+xml')
+    response['Content-Disposition'] = f'attachment; filename="{trip_id}.gpx"'
+    return response
+
+
+@admin_required
+@require_POST
+def trip_track_delete(request, trip_id):
+    """Remove a trip's GPX track and its statistics."""
+    AzureTrackService().delete_track(trip_id)
+    success, error = get_data_service().merge_trip_fields(trip_id, {'TrackJson': ''})
+
+    if success:
+        messages.success(request, 'Trasa byla smazána.')
+    else:
+        messages.error(request, f'Trasu se nepodařilo smazat: {error}')
+
+    return redirect('trips:trip_edit', trip_id=trip_id)
+
+
+# Strava sport types mapped onto the site's own trip classes.
+STRAVA_TRIP_CLASS = {
+    'Hike': 'Trail',
+    'Walk': 'Trail',
+    'Snowshoe': 'Trail',
+    'Run': 'Run',
+    'TrailRun': 'Run',
+    'BackcountrySki': 'Skialp',
+    'NordicSki': 'Skialp',
+    'AlpineSki': 'Slope',
+    'Snowboard': 'Slope',
+    'RockClimbing': 'Climb',
+}
+
+
+@admin_required
+def strava_activities(request):
+    """List the connected athlete's recent Strava activities for import."""
+    strava = get_strava_service()
+
+    try:
+        page = max(1, int(request.GET.get('page', 1)))
+    except ValueError:
+        page = 1
+
+    context = {
+        'strava_configured': strava.is_configured,
+        'connected': False,
+        'activities': [],
+        'trip_id': request.GET.get('trip_id', ''),
+        'page': page,
+    }
+
+    if strava.is_configured and strava.is_connected(request.user.username):
+        context['connected'] = True
+        try:
+            context['activities'] = strava.list_activities(
+                request.user.username, page=context['page']
+            )
+        except StravaNotConnected as e:
+            context['connected'] = False
+            messages.warning(request, str(e))
+        except StravaError as e:
+            messages.error(request, str(e))
+
+    return render(request, 'trips/strava.html', context)
+
+
+@admin_required
+def strava_connect(request):
+    """Send the user to Strava to authorize access to their activities."""
+    strava = get_strava_service()
+
+    try:
+        state = secrets.token_urlsafe(16)
+        request.session['strava_oauth_state'] = state
+        request.session['strava_oauth_trip_id'] = request.GET.get('trip_id', '')
+        redirect_uri = request.build_absolute_uri(reverse('trips:strava_callback'))
+        return redirect(strava.authorize_url(redirect_uri, state))
+    except StravaNotConfigured as e:
+        messages.error(request, str(e))
+        return redirect('trips:strava_activities')
+
+
+@admin_required
+def strava_callback(request):
+    """Handle Strava's OAuth redirect and store the tokens."""
+    strava = get_strava_service()
+
+    expected_state = request.session.pop('strava_oauth_state', None)
+    trip_id = request.session.pop('strava_oauth_trip_id', '')
+
+    if request.GET.get('error'):
+        messages.error(request, f"Strava odmítla přístup: {request.GET['error']}")
+        return redirect('trips:strava_activities')
+
+    if not expected_state or request.GET.get('state') != expected_state:
+        messages.error(request, 'Neplatný stav OAuth požadavku, zkus propojení znovu.')
+        return redirect('trips:strava_activities')
+
+    code = request.GET.get('code')
+    if not code:
+        messages.error(request, 'Strava nevrátila autorizační kód.')
+        return redirect('trips:strava_activities')
+
+    try:
+        tokens = strava.exchange_code(code)
+        strava.save_tokens(request.user.username, tokens)
+        messages.success(request, 'Účet Strava byl propojen.')
+    except (StravaNotConfigured, StravaError) as e:
+        messages.error(request, str(e))
+
+    url = reverse('trips:strava_activities')
+    return redirect(f"{url}?trip_id={trip_id}" if trip_id else url)
+
+
+@admin_required
+@require_POST
+def strava_disconnect(request):
+    """Forget the stored Strava tokens."""
+    get_strava_service().disconnect(request.user.username)
+    messages.success(request, 'Propojení se Stravou bylo zrušeno.')
+    return redirect('trips:strava_activities')
+
+
+@admin_required
+@require_POST
+def strava_import(request, activity_id):
+    """Import a Strava activity's track, into a new trip or an existing one."""
+    service = get_data_service()
+    strava = StravaService(table_service=service)
+    trip_id = request.POST.get('trip_id') or None
+
+    try:
+        gpx_bytes, activity = strava.activity_gpx(request.user.username, activity_id)
+        parsed = parse_gpx(gpx_bytes)
+    except (StravaNotConfigured, StravaNotConnected, StravaError, GpxParseError) as e:
+        logger.warning(f"Strava import of activity {activity_id} failed: {str(e)}")
+        messages.error(request, str(e))
+        return redirect('trips:strava_activities')
+
+    trip_data = {}
+
+    if trip_id:
+        trip = service.get_trip_by_id(trip_id)
+        if not trip:
+            messages.error(request, 'Trip nebyl nalezen.')
+            return redirect('trips:strava_activities')
+
+        # Keep a date the user already picked; the GPX only fills a blank one.
+        trip_data['trip_completed_on'] = trip.get('trip_completed_on') or None
+        apply_gpx_to_trip_data(parsed, trip_data, autofill=True)
+
+        success, message = service.update_trip(trip_id, trip_data)
+        if not success:
+            messages.error(request, f'Uložení trasy selhalo: {message}')
+            return redirect('trips:strava_activities')
+    else:
+        trip_data['title'] = activity['name'] or f"Strava {activity_id}"
+        trip_data['trip_completed_on'] = activity.get('start_date')
+        trip_data['trip_class'] = STRAVA_TRIP_CLASS.get(activity.get('sport_type'), '')
+        apply_gpx_to_trip_data(parsed, trip_data, autofill=True)
+
+        success, message, trip_id = service.create_trip(trip_data)
+        if not success:
+            messages.error(request, f'Vytvoření tripu selhalo: {message}')
+            return redirect('trips:strava_activities')
+
+    success, error = AzureTrackService().upload_track(
+        trip_id, gpx_bytes, geojson_bytes(parsed)
+    )
+    if success:
+        messages.success(
+            request,
+            f"Trasa ze Stravy importována: {parsed['stats']['distance_km']} km, "
+            f"↑{parsed['stats']['meters_ascend']} m."
+        )
+    else:
+        messages.error(request, f'Trasu se nepodařilo uložit: {error}')
+
+    return redirect('trips:trip_edit', trip_id=trip_id)
+
 
 def debug_azure(request):
     """Debug view to test Azure connection"""

@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+
+{% block title %}Import trasy ze Stravy - Baruch's Treks{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center mb-4">
+    <h1 class="me-auto mb-0">Import trasy</h1>
+    {% if connected %}
+    <form method="post" action="{% url 'trips:strava_disconnect' %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-outline-secondary btn-sm">Odpojit Stravu</button>
+    </form>
+    {% endif %}
+</div>
+
+{% if trip_id %}
+<div class="alert alert-info">
+    Vybraná trasa se připojí k existujícímu tripu
+    <a href="{% url 'trips:trip_edit' trip_id=trip_id %}">{{ trip_id }}</a>.
+</div>
+{% endif %}
+
+{% if not strava_configured %}
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title">Strava zatím není nastavená</h5>
+        <p>
+            Garmin hodinky se synchronizují do Stravy automaticky a Strava má na rozdíl od
+            Garmin Connect veřejné API, takže se odtud dá trasa stáhnout bez ručního exportu.
+        </p>
+        <ol>
+            <li>Založ aplikaci na <a href="https://www.strava.com/settings/api" target="_blank" rel="noopener">strava.com/settings/api</a>.</li>
+            <li>Do pole <em>Authorization Callback Domain</em> vyplň doménu tohoto webu.</li>
+            <li>Nastav proměnné prostředí <code>STRAVA_CLIENT_ID</code> a <code>STRAVA_CLIENT_SECRET</code>.</li>
+        </ol>
+        <p class="mb-0 text-muted">
+            Do té doby jde GPX nahrát ručně v editaci tripu (Garmin Connect &rarr; aktivita &rarr; Export to GPX).
+        </p>
+    </div>
+</div>
+
+{% elif not connected %}
+<div class="card">
+    <div class="card-body text-center py-5">
+        <p class="lead">Propoj svůj účet na Stravě a načti odtud zaznamenané trasy.</p>
+        <a href="{% url 'trips:strava_connect' %}{% if trip_id %}?trip_id={{ trip_id }}{% endif %}"
+           class="btn btn-warning btn-lg">
+            <i class="bi bi-link-45deg"></i> Propojit se Stravou
+        </a>
+    </div>
+</div>
+
+{% else %}
+<div class="card">
+    <div class="card-body">
+        {% if activities %}
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Aktivita</th>
+                        <th>Datum</th>
+                        <th>Typ</th>
+                        <th class="text-end">Vzdálenost</th>
+                        <th class="text-end">Převýšení</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for activity in activities %}
+                    <tr>
+                        <td>{{ activity.name }}</td>
+                        <td>{{ activity.start_date|date:"j. n. Y" }}</td>
+                        <td>{{ activity.sport_type }}</td>
+                        <td class="text-end">{{ activity.distance_km }} km</td>
+                        <td class="text-end">{{ activity.elevation_gain }} m</td>
+                        <td class="text-end">
+                            {% if activity.has_gps %}
+                            <form method="post" action="{% url 'trips:strava_import' activity_id=activity.id %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="trip_id" value="{{ trip_id }}">
+                                <button type="submit" class="btn btn-sm btn-primary">
+                                    <i class="bi bi-download"></i>
+                                    {% if trip_id %}Připojit{% else %}Importovat{% endif %}
+                                </button>
+                            </form>
+                            {% else %}
+                            <span class="text-muted small">bez GPS</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <nav class="d-flex justify-content-between">
+            {% if page > 1 %}
+            <a class="btn btn-outline-secondary btn-sm"
+               href="?page={{ page|add:"-1" }}{% if trip_id %}&trip_id={{ trip_id }}{% endif %}">
+                &larr; Novější
+            </a>
+            {% else %}
+            <span></span>
+            {% endif %}
+            <a class="btn btn-outline-secondary btn-sm"
+               href="?page={{ page|add:"1" }}{% if trip_id %}&trip_id={{ trip_id }}{% endif %}">
+                Starší &rarr;
+            </a>
+        </nav>
+        {% else %}
+        <p class="mb-0 text-muted">Žádné aktivity k zobrazení.</p>
+        {% endif %}
+    </div>
+</div>
+
+<p class="text-muted small mt-3">
+    Bez GPS jsou aktivity nahrané ručně nebo z běžeckého pásu &ndash; z těch trasu vytvořit nelze.
+</p>
+{% endif %}
+{% endblock %}

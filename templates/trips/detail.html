@@ -92,10 +92,15 @@
         </div>
         {% endif %}
         
-        {% if trip.high_point_json or trip.parking_json %}
+        {% if trip.high_point_json or trip.parking_json or track_stats %}
         <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="mb-0">Map</h5>
+            <div class="card-header d-flex align-items-center">
+                <h5 class="mb-0 me-auto">Map</h5>
+                {% if track_stats %}
+                <a href="{% url 'trips:trip_track_download' trip_id=trip.row_key %}" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-download"></i> GPX
+                </a>
+                {% endif %}
             </div>
             <div class="card-body">
                 <div id="map" style="height: 400px;"></div>
@@ -114,10 +119,23 @@
             <h4 class="mb-3">Trip Statistics</h4>
             
             <div class="stat-item">
-                <strong><i class="bi bi-clock"></i> Duration:</strong> 
+                <strong><i class="bi bi-clock"></i> Duration:</strong>
                 {{ trip.length_hours }} hours
             </div>
-            
+
+            {% if track_stats %}
+            <div class="stat-item">
+                <strong><i class="bi bi-signpost-split"></i> Distance:</strong>
+                {{ track_stats.distance_km }} km
+            </div>
+            {% if track_stats.max_elevation %}
+            <div class="stat-item">
+                <strong><i class="bi bi-triangle"></i> Max elevation:</strong>
+                {{ track_stats.max_elevation }} m
+            </div>
+            {% endif %}
+            {% endif %}
+
             {% if trip.meters_ascend %}
             <div class="stat-item">
                 <strong><i class="bi bi-arrow-up"></i> Ascent:</strong> 
@@ -188,7 +206,7 @@
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
         crossorigin=""></script>
 
-{% if trip.high_point_json or trip.parking_json %}
+{% if trip.high_point_json or trip.parking_json or track_stats %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         // Initialize map
@@ -317,6 +335,27 @@
             var group = new L.featureGroup(markers);
             map.fitBounds(group.getBounds().pad(0.2));
         }
+
+        // Draw the GPX track, loaded separately so the page renders immediately
+        {% if track_stats %}
+        fetch('{% url "trips:trip_track_geojson" trip_id=trip.row_key %}')
+            .then(function(response) {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.json();
+            })
+            .then(function(geojson) {
+                var track = L.geoJSON(geojson, {
+                    style: {color: '#d63384', weight: 4, opacity: 0.85}
+                }).addTo(map);
+                // The track covers more ground than the markers do
+                map.fitBounds(track.getBounds().pad(0.1));
+            })
+            .catch(function(error) {
+                console.error('Error loading track:', error);
+            });
+        {% endif %}
     });
 </script>
 {% endif %}

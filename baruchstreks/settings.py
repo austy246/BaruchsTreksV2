@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 from pathlib import Path
 import os
+from django.contrib.messages import constants as message_constants
 from dotenv import load_dotenv
 
 # Load environment variables from .env file if it exists
@@ -133,6 +134,11 @@ STATICFILES_DIRS = [
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
+# Message tags matching Bootstrap's alert classes
+MESSAGE_TAGS = {
+    message_constants.ERROR: 'danger',
+}
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
@@ -145,6 +151,11 @@ AZURE_TABLE_NAME = 'Trips'
 
 # Mapy.cz API Key
 MAPY_CZ_API_KEY = os.environ.get('MAPY_CZ_API_KEY', '')
+
+# Strava API credentials, used to import GPX tracks recorded on a Garmin device
+# and synced to Strava. Leave empty to hide the Strava import from the UI.
+STRAVA_CLIENT_ID = os.environ.get('STRAVA_CLIENT_ID', '')
+STRAVA_CLIENT_SECRET = os.environ.get('STRAVA_CLIENT_SECRET', '')
 
 # Security settings for production
 if not DEBUG:

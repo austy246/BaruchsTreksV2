@@ -1,5 +1,9 @@
 from django import forms
 
+# A multi-day Garmin track stays well under this; anything larger is a mistake.
+MAX_GPX_UPLOAD_SIZE = 25 * 1024 * 1024
+
+
 class TripEditForm(forms.Form):
     """Form for editing trip details"""
     # UIAA climbing grade choices
@@ -118,6 +122,33 @@ class TripEditForm(forms.Form):
                                 'accept': 'image/*'
                             }))
     
+    # GPX track upload - a Garmin Connect export, or any other GPX file
+    gpx_file = forms.FileField(required=False,
+                              widget=forms.FileInput(attrs={
+                                  'class': 'form-control',
+                                  'accept': '.gpx,application/gpx+xml'
+                              }))
+    gpx_autofill = forms.BooleanField(required=False, initial=True,
+                                     widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}))
+
     # Location fields (hidden)
     parking_json = forms.CharField(required=False, widget=forms.HiddenInput())
     high_point_json = forms.CharField(required=False, widget=forms.HiddenInput())
+
+    def clean_gpx_file(self):
+        """Reject files that are obviously not a usable GPX before parsing them."""
+        gpx_file = self.cleaned_data.get('gpx_file')
+        if not gpx_file:
+            return gpx_file
+
+        if not gpx_file.name.lower().endswith('.gpx'):
+            raise forms.ValidationError(
+                "Nahraj soubor ve formátu .gpx (v Garmin Connect: aktivita → ⚙ → Export to GPX)."
+            )
+
+        if gpx_file.size > MAX_GPX_UPLOAD_SIZE:
+            raise forms.ValidationError(
+                f"GPX soubor je příliš velký (max {MAX_GPX_UPLOAD_SIZE // (1024 * 1024)} MB)."
+            )
+
+        return gpx_file
