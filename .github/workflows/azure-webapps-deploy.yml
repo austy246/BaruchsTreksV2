@@ -72,7 +72,8 @@ jobs:
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
     permissions:
       id-token: write #This is required for requesting the JWT
-    
+      contents: read
+
     steps:
       # Download artifact from build job
       - name: Download artifact from build job
@@ -80,11 +81,17 @@ jobs:
         with:
           name: python-app
       
-      # Log in to Azure
+      # Log in to Azure with OIDC - the workflow requests a short-lived token
+      # per run, so there is no client secret to expire. This job runs in the
+      # 'Production' environment, so the federated credential in Azure must be
+      # registered for the subject
+      # repo:austy246/BaruchsTreksV2:environment:Production
       - name: Log in to Azure
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # # Create App Service Plan and Web App if they don't exist
       # - name: Create App Service Plan and Web App if they don't exist

@@ -32,42 +32,47 @@ This project is configured for continuous deployment to Azure Web App using GitH
    - Select Python 3.12 as the runtime stack
    - Configure the app to use Linux
 
-2. **Create Azure Credentials**:
+2. **Create the Azure service principal**:
    - Open Azure Cloud Shell (bash) from the Azure Portal
    - Run the following command to create a service principal with Contributor role:
      ```bash
      az ad sp create-for-rbac --name "baruchstreks-github" --role contributor \
        --scopes /subscriptions/b355f86c-94b4-467b-b643-1206cbf0e24c/resourceGroups/BaruchsTreks/providers/Microsoft.Web/sites/baruchstreks
      ```
-   - Replace `{subscription-id}` with your Azure subscription ID and `{resource-group}` with your resource group name
-   - The command will output JSON similar to this:
-     ```json
-     {
-       "appId": "example-app-id",
-       "displayName": "baruchstreks-github",
-       "password": "example-password",
-       "tenant": "example-tenant-id"
-     }
-     ```
-   - You need to transform this output into the format required by the GitHub Actions Azure login:
-     ```json
-     {
-       "clientId": "THE-APP-ID-FROM-ABOVE",
-       "clientSecret": "THE-PASSWORD-FROM-ABOVE",
-       "tenantId": "THE-TENANT-FROM-ABOVE",
-       "subscriptionId": "YOUR-AZURE-SUBSCRIPTION-ID"
-     }
-     ```
+   - Replace the subscription id and resource group with your own
+   - Note the `appId` and `tenant` from the output. The `password` is **not**
+     needed — the workflow signs in with OIDC, see the next step.
 
-3. **Configure GitHub Secrets**:
+3. **Register the federated credential (OIDC)**:
+   - The workflow requests a short-lived token from GitHub for each run and
+     exchanges it for an Azure one, so there is no client secret that can
+     expire. Azure has to be told which workflow may do that.
+   - The deploy job runs in the `Production` GitHub environment, so the subject
+     is the **environment**, not the branch:
+     ```bash
+     az ad app federated-credential create --id <appId> --parameters '{
+       "name": "github-baruchstreks-production",
+       "issuer": "https://token.actions.githubusercontent.com",
+       "subject": "repo:austy246/BaruchsTreksV2:environment:Production",
+       "audiences": ["api://AzureADTokenExchange"]
+     }'
+     ```
+   - Deploying from a different repository, environment or branch needs its own
+     federated credential — the subject has to match exactly.
+
+4. **Configure GitHub Secrets**:
    - In your GitHub repository, go to Settings > Secrets and Variables > Actions
    - Add the following secrets:
-     - `AZURE_CREDENTIALS`: The properly formatted JSON from step 2
+     - `AZURE_CLIENT_ID`: The `appId` of the service principal
+     - `AZURE_TENANT_ID`: The `tenant` of the service principal
+     - `AZURE_SUBSCRIPTION_ID`: Your Azure subscription ID
      - `BARUCHSTREKS_STORAGE_CONNECTION`: Your Azure Storage connection string
      - `MAPY_CZ_API_KEY`: Your Mapy.cz API key
      - `SECRET_KEY`: A secure Django secret key
+   - `AZURE_CREDENTIALS`, the client secret used before OIDC, is no longer read
+     by the workflow and can be deleted.
 
-4. **Configure App Settings in Azure**:
+5. **Configure App Settings in Azure**:
    - In the Azure Portal, go to your Web App > Configuration > Application settings
    - Add the following settings:
      - `BARUCHSTREKS_STORAGE_CONNECTION`: Your Azure Storage connection string
@@ -77,7 +82,7 @@ This project is configured for continuous deployment to Azure Web App using GitH
      - `SECRET_KEY`: A secure Django secret key
      - `ALLOWED_HOSTS`: "b-treks.azurewebsites.net"
 
-5. **Push to Main Branch**:
+6. **Push to Main Branch**:
    - When you push to the main branch, the GitHub Actions workflow will automatically:
      - Build the application
      - Collect static files
