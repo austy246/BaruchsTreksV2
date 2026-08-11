@@ -82,11 +82,32 @@ This project is configured for continuous deployment to Azure Web App using GitH
      - `SECRET_KEY`: A secure Django secret key
      - `ALLOWED_HOSTS`: "b-treks.azurewebsites.net"
 
-6. **Push to Main Branch**:
+6. **Set the startup command**:
+   - The app is served by gunicorn, not by `manage.py runserver`:
+     ```bash
+     az webapp config set --name b-treks --resource-group BaruchsTreks \
+       --startup-file "gunicorn --bind=0.0.0.0:8000 --timeout 600 baruchstreks.wsgi"
+     ```
+   - This lives in the Web App configuration rather than in the repository, so it
+     survives deployments and has to be set only once.
+
+7. **Push to Main Branch**:
    - When you push to the main branch, the GitHub Actions workflow will automatically:
      - Build the application
      - Collect static files
      - Deploy to Azure Web App
+
+### Dependency versions
+
+`requirements.txt` caps every dependency below the next major version. This is
+not caution for its own sake: the deployment resolves dependencies fresh on the
+App Service, so an uncapped requirement installs whatever major version is
+current at deploy time — which is not what the code was tested against. Django
+6.1 was picked up this way and the site would not start, because Django 6
+requires SQLite 3.37+ while the App Service image ships 3.34.1.
+
+Raise a cap deliberately, together with running the tests against the new
+version.
 
 ### Local Development
 

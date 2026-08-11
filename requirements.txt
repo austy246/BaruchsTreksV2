@@ -1,8 +1,12 @@
-django>=5.1.7
-azure-data-tables>=12.6.0
-azure-storage-blob>=12.25.1
-gunicorn>=21.2.0
-whitenoise>=6.6.0
-python-dotenv>=1.0.0
-gpxpy>=1.6.2
-requests>=2.32.0
+# Upper bounds are deliberate. Without them the deployment installs whatever
+# major version happens to be current, which is not what anything was tested
+# against - Django 6.1 got picked up this way and refused to start, because it
+# needs SQLite 3.37+ while the App Service image ships 3.34.1.
+django>=5.1.7,<6
+azure-data-tables>=12.6.0,<13
+azure-storage-blob>=12.25.1,<13
+gunicorn>=21.2.0,<27
+whitenoise>=6.6.0,<7
+python-dotenv>=1.0.0,<2
+gpxpy>=1.6.2,<2
+requests>=2.32.0,<3
