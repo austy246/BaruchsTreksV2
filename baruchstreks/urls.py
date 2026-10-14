@@ -15,6 +15,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import path, include
 from django.views.generic import RedirectView
 from django.contrib.auth import views as auth_views
@@ -46,6 +47,7 @@ def custom_server_error(request, *args, **kwargs):
     return server_error(request, *args, **kwargs)
 
 urlpatterns = [
+    path('healthz', lambda request: JsonResponse({'status': 'ok'}), name='healthz'),
     path('admin/', admin.site.urls),
     path('trips/', include('trips.urls')),
     path('', RedirectView.as_view(url='/trips/', permanent=False)),

@@ -1,0 +1,126 @@
+name: Deploy to VPS
+
+# Manual only until the cutover (docs/migrace-vps.md). Azure Web App keeps deploying on push to main
+# via azure-webapps-deploy.yml; after the cutover switch this to `push: branches: [main]` and delete that one.
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-baruchstreks
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python manage.py test trips
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        run: echo "image=ghcr.io/${{ github.repository_owner }}/baruchstreks-app" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ github.sha }}
+            ${{ steps.meta.outputs.image }}:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: Production
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE: ${{ needs.build-and-push.outputs.image }}
+          IMAGE_TAG: ${{ github.sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+          REPO_URL: https://github.com/${{ github.repository }}.git
+          APP_DOMAIN: ${{ secrets.APP_DOMAIN }}
+          BARUCHSTREKS_STORAGE_CONNECTION: ${{ secrets.BARUCHSTREKS_STORAGE_CONNECTION }}
+          MAPY_CZ_API_KEY: ${{ secrets.MAPY_CZ_API_KEY }}
+          STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
+          STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
+          DJANGO_SUPERUSER_USERNAME: ${{ secrets.DJANGO_SUPERUSER_USERNAME }}
+          DJANGO_SUPERUSER_PASSWORD: ${{ secrets.DJANGO_SUPERUSER_PASSWORD }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          envs: IMAGE,IMAGE_TAG,GH_TOKEN,GH_ACTOR,REPO_URL,APP_DOMAIN,BARUCHSTREKS_STORAGE_CONNECTION,MAPY_CZ_API_KEY,STRAVA_CLIENT_ID,STRAVA_CLIENT_SECRET,DJANGO_SUPERUSER_USERNAME,DJANGO_SUPERUSER_PASSWORD
+          script: |
+            set -euo pipefail
+            APP_DIR=/srv/baruchstreks
+
+            docker_logout() { docker logout ghcr.io >/dev/null 2>&1 || true; }
+            trap docker_logout EXIT
+            echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+
+            AUTH_HEADER="Authorization: Basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+            [ -d .git ] || git init
+            git -c http.extraHeader="$AUTH_HEADER" fetch "$REPO_URL" main
+            git reset --hard FETCH_HEAD
+
+            ./deploy/gen-env.sh
+            printf 'BARUCHSTREKS_STORAGE_CONNECTION=%s\nMAPY_CZ_API_KEY=%s\nSTRAVA_CLIENT_ID=%s\nSTRAVA_CLIENT_SECRET=%s\nDJANGO_SUPERUSER_USERNAME=%s\nDJANGO_SUPERUSER_PASSWORD=%s\n' \
+              "$BARUCHSTREKS_STORAGE_CONNECTION" "$MAPY_CZ_API_KEY" "$STRAVA_CLIENT_ID" "$STRAVA_CLIENT_SECRET" "$DJANGO_SUPERUSER_USERNAME" "$DJANGO_SUPERUSER_PASSWORD" \
+              | ./deploy/update-env-secrets.sh
+
+            grep -q '^APP_IMAGE=' deploy/.env || echo "APP_IMAGE=" >> deploy/.env
+            sed -i "s#^APP_IMAGE=.*#APP_IMAGE=${IMAGE}:${IMAGE_TAG}#" deploy/.env
+
+            cd deploy
+            docker image prune -af
+            docker compose pull app
+            docker compose up -d --wait --remove-orphans
+
+            # Shared Caddy (the one of manarozeniny imports /srv/infra/sites/*.caddy): drop our block in,
+            # validate the whole config, reload only if valid. An invalid block is rolled back, so it can
+            # never break the other projects' next reload.
+            DOMAIN="$(grep '^ALLOWED_HOSTS=' .env | cut -d= -f2 | cut -d, -f1)"
+            SITES=/srv/infra/sites
+            [ -d "$SITES" ] || { echo "CHYBA: chybi $SITES"; exit 1; }
+            CADDY="$(docker ps -q --filter label=com.docker.compose.project=deploy --filter label=com.docker.compose.service=caddy | head -1)"
+            [ -n "$CADDY" ] || { echo "CHYBA: nenalezen Caddy kontejner (projekt deploy)"; exit 1; }
+            [ -f "$SITES/baruchstreks.caddy" ] && cp -p "$SITES/baruchstreks.caddy" "$SITES/baruchstreks.caddy.bak" || true
+            sed "s#__APP_DOMAIN__#${DOMAIN}#g" "$APP_DIR/deploy/baruchstreks.caddy" > "$SITES/baruchstreks.caddy"
+            chmod 644 "$SITES/baruchstreks.caddy"
+            if docker exec "$CADDY" caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
+              docker exec "$CADDY" caddy reload --config /etc/caddy/Caddyfile
+              rm -f "$SITES/baruchstreks.caddy.bak"
+            else
+              echo "CHYBA: neplatna konfigurace Caddy, vracim puvodni soubor"
+              docker exec "$CADDY" caddy validate --config /etc/caddy/Caddyfile 2>&1 | tail -5 || true
+              if [ -f "$SITES/baruchstreks.caddy.bak" ]; then mv "$SITES/baruchstreks.caddy.bak" "$SITES/baruchstreks.caddy"; else rm -f "$SITES/baruchstreks.caddy"; fi
+              exit 1
+            fi
+            docker image prune -af

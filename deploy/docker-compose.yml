@@ -1,0 +1,37 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  app:
+    image: ${APP_IMAGE:-baruchstreks-app:local}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
+    env_file: .env
+    mem_limit: 512m
+    cpus: 1
+    volumes:
+      - app_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    networks:
+      default: {}
+      web:
+        aliases: [baruchstreks-app]   # unique name: the shared Caddy resolves it (docs/migrace-vps.md)
+
+networks:
+  web:
+    external: true
+    name: web
+
+volumes:
+  app_data:

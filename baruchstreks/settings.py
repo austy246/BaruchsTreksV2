@@ -33,7 +33,7 @@ DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,b-treks.azurewebsites.net').split(',')
 
-CSRF_TRUSTED_ORIGINS = ['https://b-treks.azurewebsites.net']
+CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS', 'https://b-treks.azurewebsites.net').split(',')
 
 # Application definition
 
@@ -88,7 +88,7 @@ IS_AZURE = os.environ.get('WEBSITE_SITE_NAME') is not None
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join('/home/site/wwwroot', 'db.sqlite3') if IS_AZURE else BASE_DIR / 'db.sqlite3',
+        'NAME': os.environ.get('DJANGO_DB_PATH') or (os.path.join('/home/site/wwwroot', 'db.sqlite3') if IS_AZURE else BASE_DIR / 'db.sqlite3'),
     }
 }
 

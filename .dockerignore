@@ -1,0 +1,14 @@
+.git
+.github
+.claude
+.venv
+venv
+.vscode
+**/__pycache__
+**/*.pyc
+docs
+deploy
+.env
+**/.env
+db.sqlite3
+staticfiles
