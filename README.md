@@ -13,101 +13,35 @@ Second version of Baruch's Treks which is based on Azure Storage and Django.
 - Azure Table Storage for trip data
 - Azure Blob Storage for trip photos and GPX tracks
 
-## Deployment to Azure Web App
+## Deployment (VPS)
 
-This project is configured for continuous deployment to Azure Web App using GitHub Actions.
+The app runs in a Docker container on a shared OVH VPS behind the shared Caddy, at
+<https://treks.austy.cz>. A push to `main` runs `.github/workflows/deploy-vps.yml`: tests, image build and push to
+GHCR (`ghcr.io/austy246/baruchstreks-app`), then a deploy over SSH. Full runbook, server layout and rollback:
+[docs/migrace-vps.md](docs/migrace-vps.md).
 
-### Prerequisites
+- Data stays in Azure: trips in Table Storage (`Trips`), photos and GPX tracks in Blob Storage.
+- SQLite (admin accounts and sessions) lives in the `app_data` volume (`/data/db.sqlite3`).
+- `/healthz` is the health check used by Docker.
 
-1. An Azure account with an active subscription
-2. An Azure Web App named "baruchstreks"
-3. Azure Storage Account named "baruchstreks" with:
-   - A table named "Trips"
-   - A blob container for storing photos
+### GitHub secrets
 
-### Setting up Continuous Deployment
+`SSH_HOST`, `SSH_USER`, `SSH_KEY`, `APP_DOMAIN`, `BARUCHSTREKS_STORAGE_CONNECTION`, `MAPY_CZ_API_KEY`,
+`DJANGO_SUPERUSER_USERNAME`, `DJANGO_SUPERUSER_PASSWORD`; optional `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET`.
+Server-side settings (`SECRET_KEY`, `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS`) are generated into `deploy/.env` on the
+server on the first deploy.
 
-1. **Create the Azure Web App**:
-   - Go to the Azure Portal and create a new Web App named "b-treks"
-   - Select Python 3.12 as the runtime stack
-   - Configure the app to use Linux
-
-2. **Create the Azure service principal**:
-   - Open Azure Cloud Shell (bash) from the Azure Portal
-   - Run the following command to create a service principal with Contributor role:
-     ```bash
-     az ad sp create-for-rbac --name "baruchstreks-github" --role contributor \
-       --scopes /subscriptions/b355f86c-94b4-467b-b643-1206cbf0e24c/resourceGroups/BaruchsTreks/providers/Microsoft.Web/sites/baruchstreks
-     ```
-   - Replace the subscription id and resource group with your own
-   - Note the `appId` and `tenant` from the output. The `password` is **not**
-     needed — the workflow signs in with OIDC, see the next step.
-
-3. **Register the federated credential (OIDC)**:
-   - The workflow requests a short-lived token from GitHub for each run and
-     exchanges it for an Azure one, so there is no client secret that can
-     expire. Azure has to be told which workflow may do that.
-   - The deploy job runs in the `Production` GitHub environment, so the subject
-     is the **environment**, not the branch:
-     ```bash
-     az ad app federated-credential create --id <appId> --parameters '{
-       "name": "github-baruchstreks-production",
-       "issuer": "https://token.actions.githubusercontent.com",
-       "subject": "repo:austy246/BaruchsTreksV2:environment:Production",
-       "audiences": ["api://AzureADTokenExchange"]
-     }'
-     ```
-   - Deploying from a different repository, environment or branch needs its own
-     federated credential — the subject has to match exactly.
-
-4. **Configure GitHub Secrets**:
-   - In your GitHub repository, go to Settings > Secrets and Variables > Actions
-   - Add the following secrets:
-     - `AZURE_CLIENT_ID`: The `appId` of the service principal
-     - `AZURE_TENANT_ID`: The `tenant` of the service principal
-     - `AZURE_SUBSCRIPTION_ID`: Your Azure subscription ID
-     - `BARUCHSTREKS_STORAGE_CONNECTION`: Your Azure Storage connection string
-     - `MAPY_CZ_API_KEY`: Your Mapy.cz API key
-     - `SECRET_KEY`: A secure Django secret key
-   - `AZURE_CREDENTIALS`, the client secret used before OIDC, is no longer read
-     by the workflow and can be deleted.
-
-5. **Configure App Settings in Azure**:
-   - In the Azure Portal, go to your Web App > Configuration > Application settings
-   - Add the following settings:
-     - `BARUCHSTREKS_STORAGE_CONNECTION`: Your Azure Storage connection string
-     - `MAPY_CZ_API_KEY`: Your Mapy.cz API key
-     - `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET`: Optional, enables the Strava track import
-     - `DEBUG`: Set to "False"
-     - `SECRET_KEY`: A secure Django secret key
-     - `ALLOWED_HOSTS`: "b-treks.azurewebsites.net"
-
-6. **Set the startup command**:
-   - The app is served by gunicorn, not by `manage.py runserver`:
-     ```bash
-     az webapp config set --name b-treks --resource-group BaruchsTreks \
-       --startup-file "gunicorn --bind=0.0.0.0:8000 --timeout 600 baruchstreks.wsgi"
-     ```
-   - This lives in the Web App configuration rather than in the repository, so it
-     survives deployments and has to be set only once.
-
-7. **Push to Main Branch**:
-   - When you push to the main branch, the GitHub Actions workflow will automatically:
-     - Build the application
-     - Collect static files
-     - Deploy to Azure Web App
+The former Azure Web App (`b-treks`) was deleted after the migration. The Azure Storage account `baruchstreks` is still
+used.
 
 ### Dependency versions
 
-`requirements.txt` caps every dependency below the next major version. This is
-not caution for its own sake: the deployment resolves dependencies fresh on the
-App Service, so an uncapped requirement installs whatever major version is
-current at deploy time — which is not what the code was tested against. Django
-6.1 was picked up this way and the site would not start, because Django 6
-requires SQLite 3.37+ while the App Service image ships 3.34.1.
+`requirements.txt` caps every dependency below the next major version. The Docker image resolves dependencies fresh
+at build time, so an uncapped requirement installs whatever major version is current — which is not what the code was
+tested against. (On the former Azure App Service this once pulled in Django 6.1, which refused to start because it needs
+SQLite 3.37+.)
 
-Raise a cap deliberately, together with running the tests against the new
-version.
+Raise a cap deliberately, together with running the tests against the new version.
 
 ### Local Development
 
@@ -171,10 +105,10 @@ into a GPX file. It is optional; without credentials the page explains the setup
 and manual upload keeps working.
 
 1. Create an app at [strava.com/settings/api](https://www.strava.com/settings/api).
-2. Set *Authorization Callback Domain* to the site's domain (for local
+2. Set *Authorization Callback Domain* to the site's domain, `treks.austy.cz` (for local
    development, `localhost`).
 3. Set `STRAVA_CLIENT_ID` and `STRAVA_CLIENT_SECRET` — as environment variables
-   locally, or as App Settings on the Azure Web App.
+   locally, or as GitHub secrets for the VPS deploy.
 
 Only the connecting user's own activities are read. OAuth tokens are stored in
 the `Trips` table under the `Config` partition, so they never show up among the
