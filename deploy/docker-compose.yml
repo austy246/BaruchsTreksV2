@@ -15,6 +15,9 @@ services:
     env_file: .env
     mem_limit: 512m
     cpus: 1
+    # Neprioritní projekt na sdíleném VPS: nižší váha CPU a přednostní oběť při OOM, aby nezdržel Věci Obecní.
+    cpu_shares: 256
+    oom_score_adj: 500
     volumes:
       - app_data:/data
     healthcheck:
