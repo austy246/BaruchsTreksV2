@@ -28,6 +28,8 @@ public sealed class TestStorage
         };
     }
 
+    public TableClient UsersTableClient => Tables.GetTableClient(Options.UsersTable);
+
     public TableClient TripsTableClient => Tables.GetTableClient(Options.TripsTable);
 
     public StorageBootstrapper Bootstrapper(bool development) =>

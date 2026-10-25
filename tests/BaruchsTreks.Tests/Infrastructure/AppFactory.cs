@@ -1,5 +1,12 @@
+using System.Net;
+using System.Security.Claims;
 using System.Text.RegularExpressions;
+using BaruchsTreks.Users;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,6 +19,8 @@ namespace BaruchsTreks.Tests;
 /// </summary>
 public sealed partial class AppFactory : WebApplicationFactory<Program>
 {
+    public const string TestPassword = "test-password";
+
     private readonly Dictionary<string, string> _settings;
     private readonly List<Action<IServiceCollection>> _serviceOverrides = [];
 
@@ -61,6 +70,41 @@ public sealed partial class AppFactory : WebApplicationFactory<Program>
         return this;
     }
 
+    /// <summary>Založí uživatele přímo v tabulce (bez přihlášení).</summary>
+    public async Task CreateUserAsync(string userName, string password, bool isAdmin)
+    {
+        var hasher = Services.GetRequiredService<IPasswordHasher<AppUser>>();
+        var placeholder = new AppUser(userName, "", isAdmin, "2020-01-01T00:00:00.000000");
+        await Services.GetRequiredService<IUserRepository>().UpsertAsync(
+            placeholder with { PasswordHash = hasher.HashPassword(placeholder, password) });
+    }
+
+    /// <summary>Přihlásí klienta přes formulář /accounts/login/. Vrátí odpověď (302, nebo 200 při neúspěchu).</summary>
+    public async Task<HttpResponseMessage> LoginAsync(HttpClient client, string userName, string password, string? next = null)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var url = next is null ? "/accounts/login/" : "/accounts/login/?next=" + Uri.EscapeDataString(next);
+        var token = await client.GetAntiforgeryTokenAsync(url, ct);
+        return await client.PostAsync(url, new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["username"] = userName,
+            ["password"] = password,
+            ["__RequestVerificationToken"] = token,
+        }), ct);
+    }
+
+    /// <summary>Klient přihlášený jako nový uživatel. Nesleduje přesměrování, drží cookies.</summary>
+    public async Task<HttpClient> CreateUserClientAsync(bool isAdmin)
+    {
+        var userName = (isAdmin ? "admin-" : "user-") + Hex();
+        await CreateUserAsync(userName, TestPassword, isAdmin);
+
+        var client = CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var response = await LoginAsync(client, userName, TestPassword);
+        Assert.Equal(HttpStatusCode.Found, response.StatusCode);
+        return client;
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         // Dřív než se cokoli spustí: testy nesmí nikdy sáhnout na jiné storage než lokální Azurite.
@@ -75,6 +119,7 @@ public sealed partial class AppFactory : WebApplicationFactory<Program>
 
         builder.ConfigureTestServices(services =>
         {
+            services.AddTransient<IStartupFilter, TestEndpointsStartupFilter>();
             foreach (var configure in _serviceOverrides)
                 configure(services);
         });
@@ -101,4 +146,38 @@ public sealed partial class AppFactory : WebApplicationFactory<Program>
 
     [GeneratedRegex(@"https?://([^:/;]+)", RegexOptions.IgnoreCase)]
     private static partial Regex EndpointPattern();
+
+    /// <summary>
+    /// Testovací endpointy: <c>/__whoami</c> (200 se jménem přihlášeného, jinak 401; ověřuje cookie standardním schématem,
+    /// takže odhalí i cookie, kterou aplikace nedokáže rozšifrovat) a <c>/__admin</c> (politika AdminOnly).
+    /// </summary>
+    private sealed class TestEndpointsStartupFilter : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use(async (context, pipeline) =>
+            {
+                if (context.Request.Path != "/__whoami")
+                {
+                    await pipeline();
+                    return;
+                }
+
+                var result = await context.AuthenticateAsync();
+                if (result.Succeeded)
+                {
+                    context.Response.StatusCode = StatusCodes.Status200OK;
+                    await context.Response.WriteAsync(result.Principal.FindFirstValue(ClaimTypes.Name) ?? "");
+                }
+                else
+                {
+                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                }
+            });
+            next(app);
+            app.UseEndpoints(endpoints => endpoints
+                .MapGet("/__admin", () => "admin-ok")
+                .RequireAuthorization(AuthSetup.AdminPolicy));
+        };
+    }
 }

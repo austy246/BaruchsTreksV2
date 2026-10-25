@@ -1,0 +1,61 @@
+@page "/accounts/login"
+@model LoginModel
+@{
+    ViewData["Title"] = "Login - Baruch's Treks";
+}
+@if (Model.ErrorMessage is not null)
+{
+<div class="alert alert-error alert-dismissible fade show" role="alert">
+    @Model.ErrorMessage
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Login</h4>
+            </div>
+            <div class="card-body">
+                @if (Model.LoginFailed)
+                {
+                <div class="alert alert-danger">
+                    <p>Your username and password didn't match. Please try again.</p>
+                </div>
+                }
+
+                @if (!string.IsNullOrEmpty(Model.Next))
+                {
+                    if (User.Identity?.IsAuthenticated == true)
+                    {
+                    <div class="alert alert-warning">
+                        Your account doesn't have access to this page. To proceed,
+                        please login with an account that has access.
+                    </div>
+                    }
+                    else
+                    {
+                    <div class="alert alert-info">
+                        Please login to access this page.
+                    </div>
+                    }
+                }
+
+                <form method="post" action="/accounts/login/" asp-antiforgery="true">
+                    <div class="mb-3">
+                        <label for="id_username" class="form-label">Username</label>
+                        <input type="text" name="username" id="id_username" class="form-control" required autofocus>
+                    </div>
+                    <div class="mb-3">
+                        <label for="id_password" class="form-label">Password</label>
+                        <input type="password" name="password" id="id_password" class="form-control" required>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">Login</button>
+                    </div>
+                    <input type="hidden" name="next" value="@Model.Next">
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

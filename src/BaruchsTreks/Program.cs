@@ -5,6 +5,7 @@ using BaruchsTreks.Photos;
 using BaruchsTreks.Storage;
 using BaruchsTreks.Tracks;
 using BaruchsTreks.Trips;
+using BaruchsTreks.Users;
 using Microsoft.AspNetCore.Http.Features;
 
 // Přepínače příkazové řádky se zpracují před buildem hostu.
@@ -33,11 +34,14 @@ builder.Services.AddSingleton<ITripRepository, TripRepository>();
 builder.Services.AddSingleton<IConfigRepository, ConfigRepository>();
 builder.Services.AddSingleton<ITrackStore, TrackStore>();
 builder.Services.AddSingleton<IPhotoStore, PhotoStore>();
+builder.Services.AddRazorPages();
+builder.Services.AddAppAuth(builder.Configuration);
 
 var app = builder.Build();
 
 // Jediné místo, které vytváří tabulky a kontejnery; před prvním požadavkem.
 await app.Services.GetRequiredService<StorageBootstrapper>().EnsureAsync(app.Lifetime.ApplicationStopping);
+await app.Services.GetRequiredService<AdminSeeder>().SeedAsync(app.Lifetime.ApplicationStopping);
 
 // Musí být první, aby ostatní middleware viděl skutečné schéma a IP klienta za Caddy.
 // Hlavičky se zpracují jen s ASPNETCORE_FORWARDEDHEADERS_ENABLED=true (nastavuje compose).
@@ -53,7 +57,12 @@ if (!app.Environment.IsDevelopment())
     app.UseStatusCodePages();
 }
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.MapGet("/healthz", () => Results.Json(new { status = "ok" }));
+
+app.MapRazorPages();
 
 app.Run();
 return 0;
