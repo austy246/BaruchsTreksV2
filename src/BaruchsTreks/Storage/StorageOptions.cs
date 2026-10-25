@@ -13,7 +13,11 @@ public sealed class StorageOptions
     public string TracksContainer { get; set; } = "tracks";
     public string KeysContainer { get; set; } = "baruchstreks-keys";
 
-    /// <summary>Veřejná základní URL blobů; vždy končí lomítkem (nebo je prázdná).</summary>
+    /// <summary>
+    /// Veřejná základní URL ÚČTU blobů (ne kontejneru); vždy končí lomítkem, nebo je prázdná. Adresa fotky je
+    /// <c>{PublicBlobBaseUrl}{PhotosContainer}/{jméno}</c>, např. <c>https://baruchstreks.blob.core.windows.net/</c>
+    /// nebo lokálně <c>http://localhost:10200/devstoreaccount1/</c>. Prázdná = adresa kontejneru, na kterou se připojuje aplikace.
+    /// </summary>
     public string PublicBlobBaseUrl
     {
         get => _publicBlobBaseUrl;

@@ -84,6 +84,49 @@ public class PhotoStoreTests(AzuriteFixture azurite)
         Assert.StartsWith(storage.Blobs.GetBlobContainerClient(storage.Options.PhotosContainer).Uri.AbsoluteUri, url);
     }
 
+    [Theory]
+    [InlineData("https://baruchstreks.blob.core.windows.net/")]
+    [InlineData("http://localhost:10200/devstoreaccount1/")]
+    public async Task AccountBase_BuildsUrlsAndDeleteRoundTrips(string accountBase)
+    {
+        var (storage, store) = Create(azurite, publicBase: accountBase);
+        var container = storage.Options.PhotosContainer;
+
+        var uploaded = await store.UploadAsync("trip_x", new MemoryStream(TestImages.Png(4, 4)), "a.png");
+
+        Assert.Equal($"{accountBase}{container}/trip_x/20250815103005.png", uploaded);
+        Assert.DoesNotContain($"/{container}/{container}/", uploaded);
+        Assert.Equal([uploaded], await store.ListAsync("trip_x"));
+
+        await store.DeleteByUrlAsync(uploaded);
+        Assert.Empty(await store.ListAsync("trip_x"));
+    }
+
+    [Fact]
+    public async Task ProductionShapedBase_UsesPhotosContainerSegmentOnce()
+    {
+        // Výchozí jméno kontejneru je "photos": produkční adresa je přesně .../photos/{výlet}/{jméno}.
+        var storage = new TestStorage(azurite);
+        storage.Options.PhotosContainer = "photos";
+        storage.Options.PublicBlobBaseUrl = "https://baruchstreks.blob.core.windows.net/";
+        var clock = new FixedClock(new DateTimeOffset(2025, 8, 15, 10, 30, 5, TimeSpan.Zero));
+        var store = new PhotoStore(storage.Blobs, Options.Create(storage.Options), clock);
+        var tripId = "trip_" + Guid.NewGuid().ToString("N");
+        try
+        {
+            var url = await store.UploadAsync(tripId, new MemoryStream(TestImages.Png(4, 4)), "a.png");
+
+            Assert.Equal($"https://baruchstreks.blob.core.windows.net/photos/{tripId}/20250815103005.png", url);
+            Assert.Equal([url], await store.ListAsync(tripId));
+            await store.DeleteByUrlAsync(url);
+            Assert.Empty(await store.ListAsync(tripId));
+        }
+        finally
+        {
+            await storage.Blobs.GetBlobContainerClient("photos").GetBlobClient($"{tripId}/20250815103005.png").DeleteIfExistsAsync(cancellationToken: Ct);
+        }
+    }
+
     [Fact]
     public async Task DeleteByUrl_RemovesBlob()
     {

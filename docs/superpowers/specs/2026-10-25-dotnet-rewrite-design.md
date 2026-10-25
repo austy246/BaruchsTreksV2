@@ -96,7 +96,7 @@ Import je volitelný: bez `Strava__ClientId` a `Strava__ClientSecret` se funkce 
 | Proměnná | Účel |
 |---|---|
 | `ConnectionStrings__Storage` | connection string účtu (lokálně Azurite) |
-| `Storage__PublicBlobBaseUrl` | základ URL fotek pro prohlížeč |
+| `Storage__PublicBlobBaseUrl` | základ URL účtu blobů pro prohlížeč (např. `https://baruchstreks.blob.core.windows.net/`; aplikace přidá `photos/...`) |
 | `Mapy__ApiKey` | klíč Mapy.cz (v prohlížeči) |
 | `Strava__ClientId`, `Strava__ClientSecret` | volitelné |
 | `Admin__Users__N__UserName` / `__Password` | dva admini |

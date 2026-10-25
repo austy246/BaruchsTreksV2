@@ -102,12 +102,15 @@ public sealed class PhotoStore(BlobServiceClient blobs, IOptions<StorageOptions>
         await _container.GetBlobClient(blobName).DeleteIfExistsAsync();
     }
 
-    private string PublicUrl(string blobName)
+    private string PublicUrl(string blobName) => PublicUrl(_options, _container, blobName);
+
+    /// <summary>Veřejná URL bloku fotky: <c>{PublicBlobBaseUrl}{PhotosContainer}/{jméno}</c>, jinak adresa kontejneru.</summary>
+    internal static string PublicUrl(StorageOptions options, BlobContainerClient container, string blobName)
     {
         var path = string.Join('/', blobName.Split('/').Select(Uri.EscapeDataString));
-        var prefix = _options.PublicBlobBaseUrl.Length > 0
-            ? $"{_options.PublicBlobBaseUrl}{_options.PhotosContainer}/"
-            : _container.Uri.AbsoluteUri.TrimEnd('/') + "/";
+        var prefix = options.PublicBlobBaseUrl.Length > 0
+            ? $"{options.PublicBlobBaseUrl}{options.PhotosContainer}/"
+            : container.Uri.AbsoluteUri.TrimEnd('/') + "/";
         return prefix + path;
     }
 

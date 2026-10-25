@@ -55,7 +55,7 @@ check "Admin__Users__0__Password"   has_line "$env_file" "Admin__Users__0__Passw
 check "Strava__ClientId"            has_line "$env_file" "Strava__ClientId=stravaid77"
 check "Strava__ClientSecret"        has_line "$env_file" "Strava__ClientSecret=stravasecret88"
 check "APP_DOMAIN = first ALLOWED_HOSTS entry" has_line "$env_file" "APP_DOMAIN=treks.austy.cz"
-check "Storage__PublicBlobBaseUrl"  has_line "$env_file" "Storage__PublicBlobBaseUrl=https://baruchstreks.blob.core.windows.net/photos/"
+check "Storage__PublicBlobBaseUrl"  has_line "$env_file" "Storage__PublicBlobBaseUrl=https://baruchstreks.blob.core.windows.net/"
 check "ASPNETCORE_ENVIRONMENT"      has_line "$env_file" "ASPNETCORE_ENVIRONMENT=Production"
 check "no AllowedHosts in .env (compose derives it from APP_DOMAIN)" no_prefix "$env_file" "AllowedHosts="
 check "no second admin created from nothing" no_prefix "$env_file" "Admin__Users__1__"
@@ -106,6 +106,26 @@ check "no second Mapy__ApiKey"     test "$(grep -c '^Mapy__ApiKey=' "$env_file")
 sed -i 's/^Mapy__ApiKey=.*/Mapy__ApiKey=/' "$env_file"
 bash "$script" "$env_file" > /dev/null 2>&1
 check "empty Mapy__ApiKey filled from the old key" has_line "$env_file" "Mapy__ApiKey=mapykey123"
+
+# Storage__PublicBlobBaseUrl is the ACCOUNT base. A container-style value written earlier is corrected, a correct or
+# custom one is kept, and a fresh file gets the account base.
+write_env
+echo 'Storage__PublicBlobBaseUrl=https://baruchstreks.blob.core.windows.net/photos/' >> "$env_file"
+out5="$work/out5.txt"
+bash "$script" "$env_file" > "$out5" 2>&1
+check "container-style PublicBlobBaseUrl rewritten to account base" has_line "$env_file" "Storage__PublicBlobBaseUrl=https://baruchstreks.blob.core.windows.net/"
+check "exactly one Storage__PublicBlobBaseUrl after rewrite" test "$(grep -c '^Storage__PublicBlobBaseUrl=' "$env_file")" = 1
+check "rewrite announced by key name" grep -q "^fixed Storage__PublicBlobBaseUrl" "$out5"
+sum_fixed="$(sha "$env_file")"
+bash "$script" "$env_file" > "$work/out5b.txt" 2>&1
+check "rewrite is idempotent" test "$sum_fixed" = "$(sha "$env_file")"
+check "second run says nothing to change" grep -q "^nothing to change$" "$work/out5b.txt"
+sed -i 's#^Storage__PublicBlobBaseUrl=.*#Storage__PublicBlobBaseUrl=https://cdn.example.org/#' "$env_file"
+bash "$script" "$env_file" > /dev/null 2>&1
+check "custom PublicBlobBaseUrl kept" has_line "$env_file" "Storage__PublicBlobBaseUrl=https://cdn.example.org/"
+sed -i 's#^Storage__PublicBlobBaseUrl=.*#Storage__PublicBlobBaseUrl=http://localhost:10200/devstoreaccount1/photos#' "$env_file"
+bash "$script" "$env_file" > /dev/null 2>&1
+check "container-style value without trailing slash rewritten" has_line "$env_file" "Storage__PublicBlobBaseUrl=http://localhost:10200/devstoreaccount1/"
 
 # Absent source values create nothing: no Strava, no Mapy, no admin; the required keys are still migrated.
 cat > "$env_file" <<EOF2

@@ -17,7 +17,8 @@
 set -euo pipefail
 umask 077
 
-PUBLIC_BLOB_BASE_URL="https://baruchstreks.blob.core.windows.net/photos/"
+# ACCOUNT base URL (the app appends "photos/{trip}/{name}"); NOT the container URL.
+PUBLIC_BLOB_BASE_URL="https://baruchstreks.blob.core.windows.net/"
 
 drop_legacy=0
 ENV_FILE=""
@@ -37,17 +38,24 @@ tr -d '\r' < "$ENV_FILE" > "$tmp"
 
 # Value of KEY in the working copy (empty when absent). Splits on the first '=' only.
 get() { local line; line="$(grep -m1 "^$1=" "$tmp" || true)"; printf '%s' "${line#*=}"; }
-# Sets KEY unless it already has a non-empty value; $2 is the value (an empty one creates nothing). Logs only the key name.
+# Sets KEY to VALUE (replacing any existing line). Logs only the key name via the caller.
 changed=0
+put() {
+  local key="$1" value="$2"
+  { grep -v "^${key}=" "$tmp" || true; } > "$tmp.new"
+  if [ -s "$tmp.new" ] && [ -n "$(tail -c1 "$tmp.new")" ]; then printf '
+' >> "$tmp.new"; fi
+  printf '%s=%s
+' "$key" "$value" >> "$tmp.new"
+  mv "$tmp.new" "$tmp"
+  changed=1
+}
+# Sets KEY unless it already has a non-empty value; $2 is the value (an empty one creates nothing). Logs only the key name.
 fill() {
   local key="$1" value="$2"
   [ -n "$(get "$key")" ] && return 0
   [ -n "$value" ] || return 0
-  { grep -v "^${key}=" "$tmp" || true; } > "$tmp.new"
-  if [ -s "$tmp.new" ] && [ -n "$(tail -c1 "$tmp.new")" ]; then printf '\n' >> "$tmp.new"; fi
-  printf '%s=%s\n' "$key" "$value" >> "$tmp.new"
-  mv "$tmp.new" "$tmp"
-  changed=1
+  put "$key" "$value"
   echo "set $key"
 }
 
@@ -61,6 +69,18 @@ fill Strava__ClientSecret "$(get STRAVA_CLIENT_SECRET)"
 fill APP_DOMAIN "$first_host"
 fill Storage__PublicBlobBaseUrl "$PUBLIC_BLOB_BASE_URL"
 fill ASPNETCORE_ENVIRONMENT Production
+
+# An earlier version wrote the CONTAINER url (.../photos/); the app needs the account base, otherwise photo
+# urls become .../photos/photos/... (404). Only that exact container-style shape is rewritten; anything else is the owner's.
+current_blob_base="$(get Storage__PublicBlobBaseUrl)"
+case "$current_blob_base" in
+  */photos/|*/photos)
+    fixed_blob_base="${current_blob_base%/}"
+    fixed_blob_base="${fixed_blob_base%/photos}/"
+    put Storage__PublicBlobBaseUrl "$fixed_blob_base"
+    echo "fixed Storage__PublicBlobBaseUrl (account base, not container)"
+    ;;
+esac
 
 # Keys the app cannot run (or be routed) without. The others are optional and only warn.
 missing=0
