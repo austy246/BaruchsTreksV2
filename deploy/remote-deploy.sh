@@ -145,12 +145,15 @@ main() {
     cat "$rendered" > "$SITES/baruchstreks.caddy"
     rm -f "$rendered"
     chmod 644 "$SITES/baruchstreks.caddy"
-    if docker exec "$caddy" caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1 </dev/null \
-       && docker exec "$caddy" caddy reload --config /etc/caddy/Caddyfile </dev/null; then
-      rm -f "$SITES/baruchstreks.caddy.bak"
+    # The validator output can contain the other projects' shared Caddy config, so it never reaches stdout/stderr
+    # (the CI log): it goes to a 600 file in the deploy dir, deleted again after a successful reload.
+    local caddy_log="$APP_DIR/deploy/caddy-validate.log"
+    ( umask 077; : > "$caddy_log" )
+    chmod 600 "$caddy_log"
+    if docker exec "$caddy" caddy validate --config /etc/caddy/Caddyfile >"$caddy_log" 2>&1 </dev/null        && docker exec "$caddy" caddy reload --config /etc/caddy/Caddyfile >>"$caddy_log" 2>&1 </dev/null; then
+      rm -f "$SITES/baruchstreks.caddy.bak" "$caddy_log"
     else
-      echo "ERROR: invalid Caddy configuration, restoring the previous file" >&2
-      docker exec "$caddy" caddy validate --config /etc/caddy/Caddyfile </dev/null 2>&1 | tail -5 || true
+      echo "ERROR: invalid Caddy configuration, restoring the previous file (validator output saved on the server in $caddy_log)" >&2
       if [ -f "$SITES/baruchstreks.caddy.bak" ]; then
         mv "$SITES/baruchstreks.caddy.bak" "$SITES/baruchstreks.caddy"
       else

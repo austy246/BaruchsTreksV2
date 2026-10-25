@@ -46,7 +46,7 @@ case "$1" in
     case "$3" in
       caddy)
         case "$4" in
-          validate) [ "${FAKE_VALIDATE_FAIL:-0}" = 1 ] && exit 1; exit 0 ;;
+          validate) [ "${FAKE_VALIDATE_FAIL:-0}" = 1 ] && { echo "OTHER-PROJECT-CADDY-CONFIG-LINE"; exit 1; }; exit 0 ;;
           reload) exit 0 ;;
         esac ;;
     esac ;;
@@ -97,6 +97,7 @@ check "success: previous image kept" bash -c '! grep -q "^rmi $2$" "$1"' _ "$wor
 check "success: <none> entries ignored" bash -c '! grep -q "^rmi .*<none>" "$1"' _ "$work/docker.log"
 check "success: no prune / system cleanup call" bash -c '! grep -Eq "prune|^system" "$1"' _ "$work/docker.log"
 check "success: output does not contain secrets" bash -c '! grep -q "topsecret-conn" "$1"' _ "$work/out.txt"
+check "success: no validator log left behind" test ! -e "$work/srv/deploy/caddy-validate.log"
 check "success: backup of the block removed" test ! -e "$work/sites/baruchstreks.caddy.bak"
 
 # 2. Unchanged block: no reload of the shared Caddy -----------------------------------------------------------------
@@ -129,6 +130,13 @@ check "bad caddy: exit non-zero" test "$rc" -ne 0
 check "bad caddy: previous block restored" has_line "$work/sites/baruchstreks.caddy" "previous.example.test {"
 check "bad caddy: backup consumed" test ! -e "$work/sites/baruchstreks.caddy.bak"
 check "bad caddy: reported" grep -q "invalid Caddy configuration" "$work/out.txt"
+check "bad caddy: validator output not printed to the CI log" bash -c '! grep -q "OTHER-PROJECT-CADDY-CONFIG-LINE" "$1"' _ "$work/out.txt"
+check "bad caddy: log path named in the message" grep -q "caddy-validate.log" "$work/out.txt"
+check "bad caddy: validator output saved server-side" grep -q "OTHER-PROJECT-CADDY-CONFIG-LINE" "$work/srv/deploy/caddy-validate.log"
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) echo "skip - file modes (Windows filesystem)" ;;
+  *) check "bad caddy: saved validator output is mode 600" bash -c '[ "$(stat -c %a "$1")" = 600 ]' _ "$work/srv/deploy/caddy-validate.log" ;;
+esac
 
 new_server
 FAKE_VALIDATE_FAIL=1 deploy "$NEW"
