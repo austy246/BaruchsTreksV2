@@ -1,0 +1,445 @@
+@page "/trips/trip/{id}/edit"
+@model TripEditModel
+@{
+    var trip = Model.Trip;
+    ViewData["Title"] = Model.IsNew ? "Create New Trip - Baruch's Treks" : "Edit " + trip!.Title + " - Baruch's Treks";
+    var trackGeoJsonUrl = Model.IsNew ? "" : Model.TripUrl + "/track.geojson";
+}
+@section Styles {
+<style>
+    .form-group {
+        margin-bottom: 1rem;
+    }
+    .form-label {
+        font-weight: 500;
+    }
+    .card {
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .card-header {
+        background-color: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+    }
+    .section-title {
+        margin-top: 1.5rem;
+        margin-bottom: 1rem;
+        font-size: 1.25rem;
+        font-weight: 600;
+    }
+    #map {
+        height: 400px;
+        width: 100%;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+    .map-style-switcher {
+        margin-bottom: 1rem;
+    }
+    .map-instructions {
+        margin-bottom: 1rem;
+        padding: 0.75rem;
+        background-color: #f8f9fa;
+        border-radius: 4px;
+        border-left: 4px solid #0d6efd;
+    }
+    .location-display {
+        font-family: monospace;
+        margin-bottom: 0.5rem;
+    }
+    .marker-btn {
+        margin-right: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+</style>
+<!-- Add Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
+      crossorigin=""/>
+}
+
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col">
+            @if (Model.IsNew)
+            {
+            <h1>Create New Trip</h1>
+            <a href="/trips/" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Trips
+            </a>
+            }
+            else
+            {
+            <h1>Edit Trip: @trip!.Title</h1>
+            <a href="@Model.TripUrl/" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Trip
+            </a>
+            }
+        </div>
+    </div>
+
+    @if (Model.Error is not null)
+    {
+    <div class="alert alert-danger" role="alert">
+        @Model.Error
+    </div>
+    }
+
+    <partial name="_TripForm" model="Model" />
+</div>
+
+@section Scripts {
+<!-- Add Leaflet JavaScript -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
+        crossorigin=""></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // API key from settings
+        const API_KEY = '@Model.MapyApiKey';
+        
+        // Default center coordinates (Czech Republic)
+        let centerLat = 49.74;
+        let centerLng = 15.33;
+        let defaultZoom = 10;
+        
+        // Map tile layer URLs
+        const MAP_STYLES = {
+            tracking: {
+                url: `https://api.mapy.cz/v1/maptiles/outdoor/256/{z}/{x}/{y}?apikey=${API_KEY}`,
+                attribution: '<a href="https://api.mapy.cz/copyright" target="_blank">&copy; Seznam.cz a.s. a další</a>'
+            },
+            winter: {
+                url: `https://api.mapy.cz/v1/maptiles/winter/256/{z}/{x}/{y}?apikey=${API_KEY}`,
+                attribution: '<a href="https://api.mapy.cz/copyright" target="_blank">&copy; Seznam.cz a.s. a další</a>'
+            }
+        };
+        let currentTileLayer = null;
+        
+        // Initialize the map
+        const map = L.map('map').setView([centerLat, centerLng], defaultZoom);
+        
+        // Add the default tile layer (tracking)
+        currentTileLayer = L.tileLayer(MAP_STYLES.tracking.url, {
+            minZoom: 0,
+            maxZoom: 19,
+            attribution: MAP_STYLES.tracking.attribution,
+        }).addTo(map);
+        
+        // Map style switcher logic
+        document.getElementById('trackingMapBtn').addEventListener('click', function() {
+            if (currentTileLayer) {
+                map.removeLayer(currentTileLayer);
+            }
+            currentTileLayer = L.tileLayer(MAP_STYLES.tracking.url, {
+                minZoom: 0,
+                maxZoom: 19,
+                attribution: MAP_STYLES.tracking.attribution,
+            }).addTo(map);
+            this.classList.add('active');
+            document.getElementById('winterMapBtn').classList.remove('active');
+        });
+        document.getElementById('winterMapBtn').addEventListener('click', function() {
+            if (currentTileLayer) {
+                map.removeLayer(currentTileLayer);
+            }
+            currentTileLayer = L.tileLayer(MAP_STYLES.winter.url, {
+                minZoom: 0,
+                maxZoom: 19,
+                attribution: MAP_STYLES.winter.attribution,
+            }).addTo(map);
+            this.classList.add('active');
+            document.getElementById('trackingMapBtn').classList.remove('active');
+        });
+        
+        // Add the mapy.cz logo
+        const LogoControl = L.Control.extend({
+            options: {
+                position: 'bottomleft',
+            },
+            
+            onAdd: function (map) {
+                const container = L.DomUtil.create('div');
+                const link = L.DomUtil.create('a', '', container);
+                
+                link.setAttribute('href', 'http://mapy.cz/');
+                link.setAttribute('target', '_blank');
+                link.innerHTML = '<img src="https://api.mapy.cz/img/api/logo.svg" />';
+                L.DomEvent.disableClickPropagation(link);
+                
+                return container;
+            },
+        });
+        
+        map.addControl(new LogoControl());
+        
+        // Variables to store markers and current mode
+        let parkingMarker = null;
+        let highPointMarker = null;
+        let currentMode = null;
+        let connectorLine = null;
+        let trackLayer = null;
+
+        // A straight line between the two markers hints at the route, but once
+        // the real GPX track is on the map it would only be noise.
+        function updateConnectorLine() {
+            if (connectorLine) {
+                map.removeLayer(connectorLine);
+                connectorLine = null;
+            }
+            if (!trackLayer && parkingMarker && highPointMarker) {
+                connectorLine = L.polyline([
+                    parkingMarker.getLatLng(),
+                    highPointMarker.getLatLng()
+                ], {color: 'red', weight: 3}).addTo(map);
+            }
+        }
+
+        // Get the hidden input fields
+        const parkingJsonInput = document.getElementById('id_parking_json');
+        const highPointJsonInput = document.getElementById('id_high_point_json');
+        
+        // Get the display elements
+        const parkingLatSpan = document.getElementById('parkingLat');
+        const parkingLngSpan = document.getElementById('parkingLng');
+        const highPointLatSpan = document.getElementById('highPointLat');
+        const highPointLngSpan = document.getElementById('highPointLng');
+        const parkingCoordsDiv = document.getElementById('parkingCoords');
+        const highPointCoordsDiv = document.getElementById('highPointCoords');
+        
+        // Initialize markers from existing data
+        try {
+            if (parkingJsonInput.value) {
+                const parkingData = JSON.parse(parkingJsonInput.value);
+                if (parkingData.Longtitude && parkingData.Latitude) {
+                    const lat = parkingData.Latitude;
+                    const lng = parkingData.Longtitude;
+                    
+                    parkingMarker = L.marker([lat, lng], {
+                        title: 'Start Point',
+                        draggable: true,
+                        icon: L.icon({
+                            iconUrl: '/img/marker-parking.svg',
+                            iconSize: [32, 32],
+                            iconAnchor: [16, 16],
+                            popupAnchor: [0, -16]
+                        })
+                    }).addTo(map);
+                    
+                    parkingMarker.on('dragend', function(event) {
+                        updateParkingCoordinates(event.target.getLatLng());
+                    });
+                    
+                    // Update display
+                    parkingLatSpan.textContent = lat.toFixed(6);
+                    parkingLngSpan.textContent = lng.toFixed(6);
+                    parkingCoordsDiv.innerHTML = `Lat: <span id="parkingLat">${lat.toFixed(6)}</span>, Lng: <span id="parkingLng">${lng.toFixed(6)}</span>`;
+                }
+            }
+            
+            if (highPointJsonInput.value) {
+                const highPointData = JSON.parse(highPointJsonInput.value);
+                if (highPointData.Longtitude && highPointData.Latitude) {
+                    const lat = highPointData.Latitude;
+                    const lng = highPointData.Longtitude;
+                    
+                    highPointMarker = L.marker([lat, lng], {
+                        title: 'Finish Point',
+                        draggable: true,
+                        icon: L.icon({
+                            iconUrl: '/img/marker-summit.svg',
+                            iconSize: [32, 32],
+                            iconAnchor: [16, 16],
+                            popupAnchor: [0, -16]
+                        })
+                    }).addTo(map);
+                    
+                    highPointMarker.on('dragend', function(event) {
+                        updateHighPointCoordinates(event.target.getLatLng());
+                    });
+                    
+                    // Update display
+                    highPointLatSpan.textContent = lat.toFixed(6);
+                    highPointLngSpan.textContent = lng.toFixed(6);
+                    highPointCoordsDiv.innerHTML = `Lat: <span id="highPointLat">${lat.toFixed(6)}</span>, Lng: <span id="highPointLng">${lng.toFixed(6)}</span>`;
+                }
+            }
+            
+            // If both markers exist, fit the map to show both
+            if (parkingMarker && highPointMarker) {
+                const group = new L.featureGroup([parkingMarker, highPointMarker]);
+                map.fitBounds(group.getBounds().pad(0.1));
+                updateConnectorLine();
+            } else if (parkingMarker) {
+                map.setView(parkingMarker.getLatLng(), 14);
+            } else if (highPointMarker) {
+                map.setView(highPointMarker.getLatLng(), 14);
+            }
+        } catch (e) {
+            console.error('Error initializing markers:', e);
+        }
+        
+        // Function to update parking coordinates
+        function updateParkingCoordinates(latLng) {
+            const lat = latLng.lat;
+            const lng = latLng.lng;
+            
+            // Update the hidden input
+            const parkingJson = JSON.stringify({
+                Longtitude: lng,
+                Latitude: lat
+            });
+            parkingJsonInput.value = parkingJson;
+            
+            // Update the display
+            parkingCoordsDiv.innerHTML = `Lat: <span id="parkingLat">${lat.toFixed(6)}</span>, Lng: <span id="parkingLng">${lng.toFixed(6)}</span>`;
+            updateConnectorLine();
+        }
+        
+        // Function to update high point coordinates
+        function updateHighPointCoordinates(latLng) {
+            const lat = latLng.lat;
+            const lng = latLng.lng;
+            
+            // Update the hidden input
+            const highPointJson = JSON.stringify({
+                Longtitude: lng,
+                Latitude: lat
+            });
+            highPointJsonInput.value = highPointJson;
+            
+            // Update the display
+            highPointCoordsDiv.innerHTML = `Lat: <span id="highPointLat">${lat.toFixed(6)}</span>, Lng: <span id="highPointLng">${lng.toFixed(6)}</span>`;
+            updateConnectorLine();
+        }
+        
+        // Button click handlers
+        document.getElementById('parkingBtn').addEventListener('click', function() {
+            currentMode = 'parking';
+            this.classList.remove('btn-outline-primary');
+            this.classList.add('btn-primary');
+            document.getElementById('highPointBtn').classList.remove('btn-success');
+            document.getElementById('highPointBtn').classList.add('btn-outline-success');
+        });
+        
+        document.getElementById('highPointBtn').addEventListener('click', function() {
+            currentMode = 'highPoint';
+            this.classList.remove('btn-outline-success');
+            this.classList.add('btn-success');
+            document.getElementById('parkingBtn').classList.remove('btn-primary');
+            document.getElementById('parkingBtn').classList.add('btn-outline-primary');
+        });
+        
+        document.getElementById('clearMarkersBtn').addEventListener('click', function() {
+            // Clear parking marker
+            if (parkingMarker) {
+                map.removeLayer(parkingMarker);
+                parkingMarker = null;
+                parkingJsonInput.value = '';
+                parkingCoordsDiv.innerHTML = 'No start point location set';
+            }
+            
+            // Clear high point marker
+            if (highPointMarker) {
+                map.removeLayer(highPointMarker);
+                highPointMarker = null;
+                highPointJsonInput.value = '';
+                highPointCoordsDiv.innerHTML = 'No finish point location set';
+            }
+            
+            updateConnectorLine();
+
+            // Reset mode
+            currentMode = null;
+            document.getElementById('parkingBtn').classList.remove('btn-primary');
+            document.getElementById('parkingBtn').classList.add('btn-outline-primary');
+            document.getElementById('highPointBtn').classList.remove('btn-success');
+            document.getElementById('highPointBtn').classList.add('btn-outline-success');
+        });
+        
+        // Map click handler
+        map.on('click', function(e) {
+            if (currentMode === 'parking') {
+                // Remove existing marker if any
+                if (parkingMarker) {
+                    map.removeLayer(parkingMarker);
+                }
+                
+                // Create new marker
+                parkingMarker = L.marker(e.latlng, {
+                    title: 'Start Point',
+                    draggable: true,
+                    icon: L.icon({
+                        iconUrl: '/img/marker-parking.svg',
+                        iconSize: [32, 32],
+                        iconAnchor: [16, 16],
+                        popupAnchor: [0, -16]
+                    })
+                }).addTo(map);
+                
+                // Add drag event handler
+                parkingMarker.on('dragend', function(event) {
+                    updateParkingCoordinates(event.target.getLatLng());
+                });
+                
+                // Update coordinates
+                updateParkingCoordinates(e.latlng);
+                
+            } else if (currentMode === 'highPoint') {
+                // Remove existing marker if any
+                if (highPointMarker) {
+                    map.removeLayer(highPointMarker);
+                }
+                
+                // Create new marker
+                highPointMarker = L.marker(e.latlng, {
+                    title: 'Finish Point',
+                    draggable: true,
+                    icon: L.icon({
+                        iconUrl: '/img/marker-summit.svg',
+                        iconSize: [32, 32],
+                        iconAnchor: [16, 16],
+                        popupAnchor: [0, -16]
+                    })
+                }).addTo(map);
+                
+                // Add drag event handler
+                highPointMarker.on('dragend', function(event) {
+                    updateHighPointCoordinates(event.target.getLatLng());
+                });
+                
+                // Update coordinates
+                updateHighPointCoordinates(e.latlng);
+            }
+            
+            updateConnectorLine();
+        });
+
+        @if (Model.Stats is not null)
+        {
+        <text>
+        // Show the uploaded track, so the start and high point can be placed
+        // against it - the highest coordinate is not always the right summit.
+        fetch('@trackGeoJsonUrl')
+            .then(function(response) {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.json();
+            })
+            .then(function(geojson) {
+                trackLayer = L.geoJSON(geojson, {
+                    style: {color: '#d63384', weight: 4, opacity: 0.85}
+                }).addTo(map);
+                map.fitBounds(trackLayer.getBounds().pad(0.1));
+                updateConnectorLine();
+            })
+            .catch(function(error) {
+                console.error('Error loading track:', error);
+            });
+        </text>
+        }
+    });
+</script>
+}

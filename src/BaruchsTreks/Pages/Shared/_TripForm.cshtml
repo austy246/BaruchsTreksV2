@@ -1,0 +1,344 @@
+@using BaruchsTreks.Trips
+@model TripEditModel
+@{
+    var form = Model.Form;
+    var isNew = Model.IsNew;
+    var stats = Model.Stats;
+}
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title mb-0">
+                @(isNew ? "Trip Information" : "Edit Trip Information")
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="post" enctype="multipart/form-data">
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="id_title" class="form-label">Title*</label>
+                            <input type="text" name="title"@TripEditModel.ValueAttr(form.Title) class="form-control" maxlength="200" required id="id_title">
+                            @if (form.ErrorsFor("title").Count > 0)
+                            {
+                            <div class="text-danger">@Model.ErrorList("title")</div>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="id_trip_completed_on" class="form-label">Completion Date</label>
+                            <input type="date" name="trip_completed_on"@TripEditModel.ValueAttr(form.TripCompletedOn) class="form-control" id="id_trip_completed_on">
+                            @if (form.ErrorsFor("trip_completed_on").Count > 0)
+                            {
+                            <div class="text-danger">@Model.ErrorList("trip_completed_on")</div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="id_description" class="form-label">Description</label>
+                    <textarea name="description" cols="40" rows="5" class="form-control" id="id_description">
+@form.Description</textarea>
+                    @if (form.ErrorsFor("description").Count > 0)
+                    {
+                    <div class="text-danger">@Model.ErrorList("description")</div>
+                    }
+                </div>
+
+                <h5 class="section-title">Trip Details</h5>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="id_length_hours" class="form-label">Length (hours)</label>
+                            <input type="number" name="length_hours"@TripEditModel.ValueAttr(form.LengthHours) class="form-control" step="0.5" min="0" id="id_length_hours">
+                            @if (form.ErrorsFor("length_hours").Count > 0)
+                            {
+                            <div class="invalid-feedback d-block">
+                                @Model.ErrorList("length_hours")
+                            </div>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="id_participants" class="form-label">Participants</label>
+                            <textarea name="participants" cols="40" rows="3" class="form-control" id="id_participants">
+@form.Participants</textarea>
+                            @if (form.ErrorsFor("participants").Count > 0)
+                            {
+                            <div class="text-danger">@Model.ErrorList("participants")</div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="id_meters_ascend" class="form-label">Elevation Gain (m)</label>
+                            <input type="number" name="meters_ascend"@TripEditModel.ValueAttr(form.MetersAscend) class="form-control" min="0" id="id_meters_ascend">
+                            @if (form.ErrorsFor("meters_ascend").Count > 0)
+                            {
+                            <div class="invalid-feedback d-block">
+                                @Model.ErrorList("meters_ascend")
+                            </div>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="id_meters_descend" class="form-label">Meters Descend</label>
+                            <input type="number" name="meters_descend"@TripEditModel.ValueAttr(form.MetersDescend) class="form-control" min="0" id="id_meters_descend">
+                            @if (form.ErrorsFor("meters_descend").Count > 0)
+                            {
+                            <div class="invalid-feedback d-block">
+                                @Model.ErrorList("meters_descend")
+                            </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <h5 class="section-title">Climbing/Hiking Grades</h5>
+
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label for="id_trip_class" class="form-label">Trip Class</label>
+                            @TripEditModel.Select("trip_class", form.TripClass, TripForm.TripClassChoices)
+                            @if (form.ErrorsFor("trip_class").Count > 0)
+                            {
+                            <div class="text-danger">@Model.ErrorList("trip_class")</div>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label for="id_uiaa_grade" class="form-label">UIAA Grade</label>
+                            @TripEditModel.Select("uiaa_grade", form.UiaaGrade, TripForm.UiaaGradeChoices)
+                            @if (form.ErrorsFor("uiaa_grade").Count > 0)
+                            {
+                            <div class="text-danger">@Model.ErrorList("uiaa_grade")</div>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label for="id_alpine_grade" class="form-label">Alpine Grade</label>
+                            @TripEditModel.Select("alpine_grade", form.AlpineGrade, TripForm.AlpineGradeChoices)
+                            @if (form.ErrorsFor("alpine_grade").Count > 0)
+                            {
+                            <div class="text-danger">@Model.ErrorList("alpine_grade")</div>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label for="id_ferata_grade" class="form-label">Ferrata Grade</label>
+                            @TripEditModel.Select("ferata_grade", form.FerataGrade, TripForm.FerataGradeChoices)
+                            @if (form.ErrorsFor("ferata_grade").Count > 0)
+                            {
+                            <div class="text-danger">@Model.ErrorList("ferata_grade")</div>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <h5 class="section-title">Map Locations</h5>
+
+                <div class="map-instructions">
+                    <p class="@(stats is not null ? "mb-1" : null)"><strong>Instructions:</strong> Click the buttons below to select which marker to place, then click on the map to set the location.</p>
+                    @if (stats is not null)
+                    {
+                    <p class="mb-0">
+                        Trasa z GPX je na mapě vyznačená růžově. Vrchol je předvyplněný nejvyšším
+                        bodem trasy &ndash; pokud sedět nemá, přetáhni značku na správné místo.
+                    </p>
+                    }
+                </div>
+
+                <div class="mb-3">
+                    <button type="button" id="parkingBtn" class="btn btn-outline-primary marker-btn">
+                        <i class="fas fa-map-marker-alt"></i> Start Point
+                    </button>
+                    <button type="button" id="highPointBtn" class="btn btn-outline-success marker-btn">
+                        <i class="fas fa-mountain"></i> Finish Point
+                    </button>
+                    <button type="button" id="clearMarkersBtn" class="btn btn-outline-danger marker-btn">
+                        <i class="bi bi-trash"></i> Clear Markers
+                    </button>
+                </div>
+
+                <div id="map"></div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">Start Point</h6>
+                            </div>
+                            <div class="card-body">
+                                <div id="parkingCoords" class="location-display">
+                                    @if (form.ParkingJson.Length > 0)
+                                    {
+                                    <text>Lat: <span id="parkingLat"></span>, Lng: <span id="parkingLng"></span></text>
+                                    }
+                                    else
+                                    {
+                                    <text>No start point location set</text>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">Finish Point</h6>
+                            </div>
+                            <div class="card-body">
+                                <div id="highPointCoords" class="location-display">
+                                    @if (form.HighPointJson.Length > 0)
+                                    {
+                                    <text>Lat: <span id="highPointLat"></span>, Lng: <span id="highPointLng"></span></text>
+                                    }
+                                    else
+                                    {
+                                    <text>No finish point location set</text>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Map style switcher -->
+                <div class="map-style-switcher">
+                    <button type="button" id="trackingMapBtn" class="btn btn-outline-secondary btn-sm active">Tracking Map</button>
+                    <button type="button" id="winterMapBtn" class="btn btn-outline-secondary btn-sm">Winter Map</button>
+                </div>
+                <!-- Hidden fields for coordinates -->
+                <input type="hidden" name="parking_json"@TripEditModel.ValueAttr(form.ParkingJson) id="id_parking_json">
+                <input type="hidden" name="high_point_json"@TripEditModel.ValueAttr(form.HighPointJson) id="id_high_point_json">
+
+                <h5 class="section-title">Trasa (GPX)</h5>
+
+                @if (stats is not null)
+                {
+                <div class="alert alert-success d-flex flex-wrap align-items-center gap-3">
+                    <div class="me-auto">
+                        <i class="bi bi-signpost-split"></i>
+                        <strong>@DjangoFormat.Float(stats.DistanceKm) km</strong>
+                        &middot; &uarr;@stats.MetersAscend m
+                        &middot; &darr;@stats.MetersDescend m
+                        @if (stats.DurationHours is { } hours && hours != 0)
+                        {
+                        <text>&middot; @DjangoFormat.Float(hours) h</text>
+                        }
+                        <small class="text-muted d-block">
+                            @stats.PointCount bodů (z původních @stats.OriginalPointCount)
+                        </small>
+                    </div>
+                    <a href="@Model.TripUrl/track.gpx" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-download"></i> Stáhnout GPX
+                    </a>
+                    <button type="submit" form="trackDeleteForm" class="btn btn-sm btn-outline-danger">
+                        <i class="bi bi-trash"></i> Smazat trasu
+                    </button>
+                </div>
+                }
+
+                <div class="row">
+                    <div class="col-12">
+                        <div class="form-group">
+                            <label for="id_gpx_file" class="form-label">
+                                @(stats is not null ? "Nahradit trasu" : "Nahrát GPX")
+                            </label>
+                            <input type="file" name="gpx_file" class="form-control" accept=".gpx,application/gpx+xml" id="id_gpx_file">
+                            <small class="form-text text-muted">
+                                Garmin Connect: otevři aktivitu &rarr; <i class="bi bi-gear"></i> &rarr; Export to GPX.
+                                @if (Model.StravaConfigured && !isNew)
+                                {
+                                <text>Nebo si trasu <a href="/trips/strava/?trip_id=@Uri.EscapeDataString(Model.Trip!.Id)">stáhni rovnou ze Stravy</a>.</text>
+                                }
+                            </small>
+                            @if (form.ErrorsFor("gpx_file").Count > 0)
+                            {
+                            <div class="invalid-feedback d-block">
+                                @Model.ErrorList("gpx_file")
+                            </div>
+                            }
+                        </div>
+                        <small class="form-text text-muted d-block">
+                            Prázdná pole (převýšení, délka, datum, start a vrchol) se z GPX
+                            předvyplní. U těch, které už vyplněné jsou, se stránka nejdřív
+                            zeptá, jestli je přepsat.
+                        </small>
+                    </div>
+                </div>
+
+                <h5 class="section-title">Photos</h5>
+
+                <div class="row">
+                    <div class="col-12">
+                        <div class="form-group">
+                            <label for="id_photos" class="form-label">Upload Photos</label>
+                            <input type="file" name="photos" multiple class="form-control" id="id_photos" accept="image/*">
+                            <small class="form-text text-muted">
+                                Select multiple photos to upload. Supported formats: JPG, PNG, GIF, etc.
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                @if (Model.TripPhotos.Count > 0)
+                {
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <h6>Existing Photos</h6>
+                        <div class="row">
+                            @foreach (var photoUrl in Model.TripPhotos)
+                            {
+                            <div class="col-md-3 mb-3">
+                                <div class="card">
+                                    <img src="@photoUrl" class="card-img-top" alt="Trip photo">
+                                    <div class="card-body p-2 text-center">
+                                        <a href="@photoUrl" target="_blank" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-eye"></i> View
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+                }
+
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-primary">
+                        @(isNew ? "Create Trip" : "Save Changes")
+                    </button>
+                    @if (isNew)
+                    {
+                    <a href="/trips/" class="btn btn-outline-secondary">Cancel</a>
+                    }
+                    else
+                    {
+                    <a href="@Model.TripUrl/" class="btn btn-outline-secondary">Cancel</a>
+                    }
+                </div>
+            </form>
+
+            @if (stats is not null)
+            {
+            <!-- Kept outside the edit form, HTML does not allow nested forms -->
+            <form id="trackDeleteForm" method="post"
+                  action="@Model.TripUrl/track/delete/" asp-antiforgery="true">
+            </form>
+            }
+        </div>
+    </div>

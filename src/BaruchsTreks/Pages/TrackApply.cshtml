@@ -1,0 +1,62 @@
+@page "/trips/trip/{id}/track/apply"
+@model TrackApplyModel
+@{
+    var trip = Model.Trip!;
+    var stats = Model.Stats!;
+    ViewData["Title"] = "Přepsat údaje z GPX - " + trip.Title;
+}
+<div class="row justify-content-center">
+    <div class="col-lg-9">
+        <h1 class="mb-3">Přepsat údaje z GPX?</h1>
+        <p class="text-muted">
+            Trasa u tripu <strong>@trip.Title</strong> je nahraná
+            (@DjangoFormat.Float(stats.DistanceKm) km, &uarr;@stats.MetersAscend m).
+            Tyhle údaje ale trip už má vyplněné a z GPX vycházejí jinak &ndash; vyber,
+            co se má přepsat.
+        </p>
+
+        <form method="post">
+            <div class="card mb-3">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead>
+                            <tr>
+                                <th style="width: 3rem;"></th>
+                                <th>Pole</th>
+                                <th>Současná hodnota</th>
+                                <th>Hodnota z GPX</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var conflict in Model.Conflicts)
+                            {
+                            <tr>
+                                <td>
+                                    <input class="form-check-input" type="checkbox" name="fields"
+                                           value="@conflict.Field" id="field_@conflict.Field" checked>
+                                </td>
+                                <td><label class="form-check-label" for="field_@conflict.Field">@conflict.Label</label></td>
+                                <td class="text-muted">@conflict.Current</td>
+                                <td><strong>@conflict.New</strong></td>
+                            </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-check2"></i> Přepsat vybrané
+            </button>
+            <a href="/trips/trip/@Uri.EscapeDataString(trip.Id)/edit/" class="btn btn-outline-secondary">
+                Nechat beze změny
+            </a>
+        </form>
+
+        <p class="text-muted small mt-3">
+            Trasa i její statistiky jsou uložené tak jako tak &ndash; tohle rozhoduje jen
+            o polích tripu. Vrchol je nejvyšší bod trasy, což nemusí být vrchol, o který
+            šlo; přepsat ho můžeš a pak značku posunout na mapě v editaci.
+        </p>
+    </div>
+</div>

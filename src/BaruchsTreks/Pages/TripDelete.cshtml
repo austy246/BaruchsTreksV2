@@ -1,0 +1,15 @@
+@page "/trips/trip/{id}/delete"
+@model TripDeleteModel
+@{
+    ViewData["Title"] = "Delete Trip";
+}
+<div class="container mt-5">
+    <div class="alert alert-danger">
+        <h4 class="alert-heading">Confirm Delete</h4>
+        <p>Are you sure you want to delete this trip? This action cannot be undone.</p>
+        <form method="post">
+            <button type="submit" class="btn btn-danger">Yes, Delete</button>
+            <a href="/trips/trip/@Uri.EscapeDataString(Model.TripId)/" class="btn btn-secondary ms-2">Cancel</a>
+        </form>
+    </div>
+</div>

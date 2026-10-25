@@ -3,6 +3,7 @@ using System.Text.Unicode;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using BaruchsTreks.Cli;
+using BaruchsTreks.Http;
 using BaruchsTreks.Photos;
 using BaruchsTreks.Storage;
 using BaruchsTreks.Tracks;
@@ -25,9 +26,10 @@ if (args.Contains("--check-data") || args.Contains("--selftest"))
 var builder = WebApplication.CreateBuilder(args);
 
 // Limit těla požadavku 50 MB (fotky z mobilu).
-const long MaxRequestBodyBytes = 52_428_800;
-builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = MaxRequestBodyBytes);
-builder.Services.Configure<FormOptions>(options => options.MultipartBodyLengthLimit = MaxRequestBodyBytes);
+// Kestrel ho vynucuje sám; UseRequestBodyLimit ho hlídá navíc (TestServer limity nevynucuje a čtení formuláře
+// by z výjimky Kestrelu udělalo 400/500 místo 413).
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = RequestBodyLimit.MaxBytes);
+builder.Services.Configure<FormOptions>(options => options.MultipartBodyLengthLimit = RequestBodyLimit.MaxBytes);
 
 builder.Services.AddOptions<StorageOptions>().BindConfiguration(StorageOptions.SectionName);
 builder.Services.AddSingleton(sp => new TableServiceClient(StorageConnectionString(sp)));
@@ -39,7 +41,11 @@ builder.Services.AddSingleton<ITrackStore, TrackStore>();
 builder.Services.AddSingleton<IPhotoStore, PhotoStore>();
 // Háčky a čárky zůstanou v HTML jako UTF-8 (Django je také nekóduje); <, >, &, ' a " se kódují dál.
 builder.Services.Configure<WebEncoderOptions>(options => options.TextEncoderSettings = new TextEncoderSettings(UnicodeRanges.All));
-builder.Services.AddRazorPages();
+builder.Services.AddRazorPages(options =>
+{
+    // Zakládání výletu sdílí stránku s úpravou (id chybí).
+    options.Conventions.AddPageRoute("/TripEdit", "/trips/trip/new");
+});
 builder.Services.AddAppAuth(builder.Configuration);
 
 var app = builder.Build();
@@ -60,6 +66,7 @@ if (!app.Environment.IsDevelopment())
 // 404 a ostatní chybové stavy bez těla dostanou stránku z Pages/Error.cshtml se zachovaným stavovým kódem.
 app.UseStatusCodePagesWithReExecute("/error");
 app.UseStaticFiles();
+app.UseRequestBodyLimit();
 
 app.UseAuthentication();
 app.UseAuthorization();
