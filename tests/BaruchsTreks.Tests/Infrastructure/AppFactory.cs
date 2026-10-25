@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
@@ -8,6 +9,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -24,6 +26,7 @@ public sealed partial class AppFactory : WebApplicationFactory<Program>
 
     private readonly Dictionary<string, string> _settings;
     private readonly List<Action<IServiceCollection>> _serviceOverrides = [];
+    private string _environment = "Development";
 
     public string TripsTable { get; }
     public string UsersTable { get; }
@@ -61,6 +64,23 @@ public sealed partial class AppFactory : WebApplicationFactory<Program>
     public AppFactory ConfigureTestServices(Action<IServiceCollection> configure)
     {
         _serviceOverrides.Add(configure);
+        return this;
+    }
+
+    /// <summary>Prostředí hostu (výchozí Development). Volat před prvním CreateClient.</summary>
+    public AppFactory WithEnvironment(string environment)
+    {
+        _environment = environment;
+        return this;
+    }
+
+    /// <summary>
+    /// Každý požadavek poběží s touto kulturou (jen vlákno požadavku, ostatní testy se neovlivní). Odpověď nese hlavičku
+    /// <c>X-Test-Decimal</c> s výsledkem <c>1.5.ToString()</c>, aby test mohl ověřit, že kultura opravdu platí.
+    /// </summary>
+    public AppFactory WithCulture(string cultureName)
+    {
+        _serviceOverrides.Add(services => services.AddSingleton<IStartupFilter>(new CultureStartupFilter(cultureName)));
         return this;
     }
 
@@ -112,7 +132,7 @@ public sealed partial class AppFactory : WebApplicationFactory<Program>
         AssertLocalStorage(_settings.GetValueOrDefault("ConnectionStrings:Storage"));
         AssertLocalStorage(Environment.GetEnvironmentVariable("ConnectionStrings__Storage"));
 
-        builder.UseEnvironment("Development");
+        builder.UseEnvironment(_environment);
 
         // Klíče jsou záměrně nešifrované (viz AuthSetup); varování XmlKeyManager[35] by jen zašumělo výstup testů.
         builder.ConfigureLogging(l => l.AddFilter("Microsoft.AspNetCore.DataProtection", LogLevel.Error));
@@ -161,6 +181,21 @@ public sealed partial class AppFactory : WebApplicationFactory<Program>
         {
             app.Use(async (context, pipeline) =>
             {
+                if (context.Request.Path == "/__flash")
+                {
+                    // /__flash?m=success:Saved&m=error:Oops uloží zprávy do TempData a přesměruje na /trips/.
+                    var tempData = context.RequestServices.GetRequiredService<ITempDataDictionaryFactory>().GetTempData(context);
+                    foreach (var message in context.Request.Query["m"])
+                    {
+                        var parts = message!.Split(':', 2);
+                        tempData.AddMessage(parts[0], parts[1]);
+                    }
+
+                    tempData.Save();
+                    context.Response.Redirect("/trips/");
+                    return;
+                }
+
                 if (context.Request.Path != "/__whoami")
                 {
                     await pipeline();
@@ -182,6 +217,22 @@ public sealed partial class AppFactory : WebApplicationFactory<Program>
             app.UseEndpoints(endpoints => endpoints
                 .MapGet("/__admin", () => "admin-ok")
                 .RequireAuthorization(AuthSetup.AdminPolicy));
+        };
+    }
+
+    private sealed class CultureStartupFilter(string cultureName) : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            var culture = new CultureInfo(cultureName);
+            app.Use(async (context, pipeline) =>
+            {
+                CultureInfo.CurrentCulture = culture;
+                CultureInfo.CurrentUICulture = culture;
+                context.Response.Headers["X-Test-Decimal"] = 1.5.ToString();
+                await pipeline();
+            });
+            next(app);
         };
     }
 }

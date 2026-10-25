@@ -1,4 +1,11 @@
-@* Minimální layout kvůli přihlašovací stránce. Úkol 7 ho nahradí plným layoutem z templates/base.html. *@
+@using BaruchsTreks.Users
+@inject TimeProvider Clock
+@{
+    // request.path v Django má vždy koncové lomítko; porovnáváme bez něj, aby /trips/all fungovalo stejně.
+    var path = (Context.Request.Path.Value ?? "").TrimEnd('/');
+    var isAuthenticated = User.Identity?.IsAuthenticated == true;
+    var isStaff = isAuthenticated && User.HasClaim(AppClaims.IsAdmin, "true");
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,11 +13,89 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@(ViewData["Title"] ?? "Baruch's Treks")</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="/css/style.css">
+    @await RenderSectionAsync("Styles", required: false)
 </head>
 <body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/trips/">Baruch's Treks</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link @(path == "/trips/all" ? "active" : "")" href="/trips/all/">All Trips</a>
+                    </li>
+                    @if (isStaff)
+                    {
+                    <li class="nav-item">
+                        <a class="nav-link @(path == "/trips/trip/new" ? "active" : "")" href="/trips/trip/new/">
+                            <i class="bi bi-plus-circle"></i> New Trip
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link @(path == "/trips/strava" ? "active" : "")" href="/trips/strava/">
+                            <i class="bi bi-cloud-arrow-down"></i> Import trasy
+                        </a>
+                    </li>
+                    }
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    @if (isAuthenticated)
+                    {
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-person-circle"></i> @User.Identity!.Name
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
+                            <li>
+                                <form method="post" action="/accounts/logout/" class="logout-form" asp-antiforgery="true">
+                                    <button type="submit" class="dropdown-item">Logout</button>
+                                </form>
+                            </li>
+                        </ul>
+                    </li>
+                    }
+                    else
+                    {
+                    <li class="nav-item">
+                        <a class="nav-link" href="/accounts/login/">Login</a>
+                    </li>
+                    }
+                </ul>
+            </div>
+        </div>
+    </nav>
+
     <main class="container py-4">
+        @foreach (var message in ViewContext.TempData.TakeMessages())
+        {
+        <div class="alert alert-@(message.Tags.Length == 0 ? "info" : message.Tags) alert-dismissible fade show" role="alert">
+            @message.Text
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        }
         @RenderBody()
     </main>
+
+    <footer class="bg-dark text-white py-4 mt-5">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>Baruch's Treks</h5>
+                    <p>Conquering peaks and exploring mountains, one adventure at a time.</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <p>&copy; @Clock.GetUtcNow().Year Baruch's Treks. All rights reserved.</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

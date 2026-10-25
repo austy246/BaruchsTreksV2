@@ -1,3 +1,5 @@
+using System.Text.Encodings.Web;
+using System.Text.Unicode;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using BaruchsTreks.Cli;
@@ -7,6 +9,7 @@ using BaruchsTreks.Tracks;
 using BaruchsTreks.Trips;
 using BaruchsTreks.Users;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.Extensions.WebEncoders;
 
 // Přepínače příkazové řádky se zpracují před buildem hostu.
 if (args.Contains("--healthcheck"))
@@ -34,6 +37,8 @@ builder.Services.AddSingleton<ITripRepository, TripRepository>();
 builder.Services.AddSingleton<IConfigRepository, ConfigRepository>();
 builder.Services.AddSingleton<ITrackStore, TrackStore>();
 builder.Services.AddSingleton<IPhotoStore, PhotoStore>();
+// Háčky a čárky zůstanou v HTML jako UTF-8 (Django je také nekóduje); <, >, &, ' a " se kódují dál.
+builder.Services.Configure<WebEncoderOptions>(options => options.TextEncoderSettings = new TextEncoderSettings(UnicodeRanges.All));
 builder.Services.AddRazorPages();
 builder.Services.AddAppAuth(builder.Configuration);
 
@@ -48,19 +53,20 @@ await app.Services.GetRequiredService<AdminSeeder>().SeedAsync(app.Lifetime.Appl
 app.UseForwardedHeaders();
 if (!app.Environment.IsDevelopment())
 {
-    // Žádné podrobnosti o výjimce ven.
-    app.UseExceptionHandler(errorApp => errorApp.Run(context =>
-    {
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        return context.Response.WriteAsync("Internal Server Error");
-    }));
-    app.UseStatusCodePages();
+    // Žádné podrobnosti o výjimce ven: Pages/Error.cshtml ukáže jen obecnou hlášku (podrobnosti jsou v logu).
+    app.UseExceptionHandler("/error");
 }
+
+// 404 a ostatní chybové stavy bez těla dostanou stránku z Pages/Error.cshtml se zachovaným stavovým kódem.
+app.UseStatusCodePagesWithReExecute("/error");
+app.UseStaticFiles();
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapGet("/healthz", () => Results.Json(new { status = "ok" }));
+app.MapGet("/", () => Results.Redirect("/trips/"));
+app.MapTrackEndpoints();
 
 app.MapRazorPages();
 

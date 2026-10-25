@@ -1,0 +1,154 @@
+@page "/trips/all"
+@model AllTripsModel
+@using BaruchsTreks.Users
+@{
+    ViewData["Title"] = "All Trips - Baruch's Treks";
+    var isStaff = User.Identity?.IsAuthenticated == true && User.HasClaim(AppClaims.IsAdmin, "true");
+}
+<h1 class="mb-4">All Trips</h1>
+
+@if (isStaff)
+{
+<div class="row mb-4">
+    <div class="col-12 d-flex justify-content-end">
+        <a href="/trips/trip/new/" class="btn btn-success">
+            <i class="bi bi-plus-circle"></i> Create New Trip
+        </a>
+    </div>
+</div>
+}
+
+<div class="row">
+    <div class="col-12 mb-4">
+        <div class="card shadow-sm overflow-visible">
+            <div class="card-body overflow-visible">
+                <div class="d-flex flex-column gap-2">
+
+                    <!-- Filter row -->
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="small text-muted"><i class="bi bi-funnel me-1"></i>Filter:</span>
+                        <div class="btn-group" role="group" aria-label="Trip filter">
+                            <a href="/trips/all/?filter=all&sort=@Model.CurrentSort&dir=@Model.CurrentDir" class="btn btn-outline-primary @(Model.CurrentFilter == "all" ? "active" : "")">
+                                All Trips <span class="badge bg-secondary">@Model.TotalCount</span>
+                            </a>
+                            <a href="/trips/all/?filter=completed&sort=@Model.CurrentSort&dir=@Model.CurrentDir" class="btn btn-outline-success @(Model.CurrentFilter == "completed" ? "active" : "")">
+                                Completed <span class="badge bg-secondary">@Model.CompletedCount</span>
+                            </a>
+                            <a href="/trips/all/?filter=future&sort=@Model.CurrentSort&dir=@Model.CurrentDir" class="btn btn-outline-info @(Model.CurrentFilter == "future" ? "active" : "")">
+                                Future Trips <span class="badge bg-secondary">@Model.FutureCount</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Sort row -->
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="small text-muted"><i class="bi bi-arrow-down-up me-1"></i>Sort:</span>
+                        <div class="btn-group" role="group" aria-label="Sort by">
+                            <a class="btn btn-outline-secondary @(Model.CurrentSort == "modified" ? "active" : "")" href="/trips/all/?filter=@Model.CurrentFilter&sort=modified&dir=@Model.CurrentDir" title="Last modified">
+                                <i class="bi bi-clock-history"></i>
+                                <span class="d-none d-md-inline ms-1">Modified</span>
+                            </a>
+                            <a class="btn btn-outline-secondary @(Model.CurrentSort == "created" ? "active" : "")" href="/trips/all/?filter=@Model.CurrentFilter&sort=created&dir=@Model.CurrentDir" title="Created">
+                                <i class="bi bi-calendar-plus"></i>
+                                <span class="d-none d-md-inline ms-1">Created</span>
+                            </a>
+                            <a class="btn btn-outline-secondary @(Model.CurrentSort == "completed" ? "active" : "")" href="/trips/all/?filter=@Model.CurrentFilter&sort=completed&dir=@Model.CurrentDir" title="Completed">
+                                <i class="bi bi-flag"></i>
+                                <span class="d-none d-md-inline ms-1">Completed</span>
+                            </a>
+                            <a class="btn btn-outline-secondary @(Model.CurrentSort == "name" ? "active" : "")" href="/trips/all/?filter=@Model.CurrentFilter&sort=name&dir=@Model.CurrentDir" title="Trip name">
+                                <i class="bi bi-fonts"></i>
+                                <span class="d-none d-md-inline ms-1">Name</span>
+                            </a>
+                        </div>
+
+                        @if (Model.CurrentDir == "asc")
+                        {
+                        <a class="btn btn-outline-secondary" href="/trips/all/?filter=@Model.CurrentFilter&sort=@Model.CurrentSort&dir=desc" title="Descending">
+                            <i class="bi bi-sort-down"></i>
+                        </a>
+                        }
+                        else
+                        {
+                        <a class="btn btn-outline-secondary" href="/trips/all/?filter=@Model.CurrentFilter&sort=@Model.CurrentSort&dir=asc" title="Ascending">
+                            <i class="bi bi-sort-up"></i>
+                        </a>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row row-cols-1 g-4">
+    @foreach (var trip in Model.Trips)
+    {
+    <div class="col">
+        <div class="card shadow-sm @(trip.TripCompletedOn.Length == 0 ? "border-info" : "")">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h5 class="card-title">@trip.Title</h5>
+                        <p class="card-text text-muted">
+                            @if (trip.TripCompletedOn.Length > 0)
+                            {
+                            <small>Completed: @trip.TripCompletedOn</small>
+                            }
+                            else
+                            {
+                            <small class="text-info"><i class="bi bi-calendar-event"></i> Future Trip</small>
+                            }
+                        </p>
+                        <p class="card-text">@DjangoFormat.TruncateWords(trip.Description, 50)</p>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-flex flex-column h-100">
+                            <div class="mt-auto">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="btn-group">
+                                        @if (trip.Id.Length > 0)
+                                        {
+                                        <a href="/trips/trip/@Uri.EscapeDataString(trip.Id)/" class="btn btn-sm btn-primary">View Details</a>
+                                        }
+                                        else
+                                        {
+                                        <button class="btn btn-sm btn-secondary" disabled>No Details</button>
+                                        }
+                                    </div>
+                                    <div class="text-muted">
+                                        <span class="badge bg-secondary">@DjangoFormat.Float(trip.LengthHours) hours</span>
+                                        @if (trip.MetersAscend != 0)
+                                        {
+                                        <span class="badge bg-info text-dark">↑ @DjangoFormat.Number(trip.MetersAscend)m</span>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    }
+    @if (Model.Trips.Count == 0)
+    {
+    <div class="col-12">
+        <div class="alert alert-info">
+            @if (Model.CurrentFilter == "completed")
+            {
+            <text>No completed trips available. Check back later!</text>
+            }
+            else if (Model.CurrentFilter == "future")
+            {
+            <text>No future trips planned yet. Check back later!</text>
+            }
+            else
+            {
+            <text>No trips available at the moment. Check back later!</text>
+            }
+        </div>
+    </div>
+    }
+</div>

@@ -1,0 +1,431 @@
+@page "/trips/trip/{id}"
+@model TripDetailModel
+@using BaruchsTreks.Users
+@{
+    var trip = Model.Trip;
+    var stats = Model.Stats;
+    var tripUrl = trip is null ? "" : "/trips/trip/" + Uri.EscapeDataString(trip.Id);
+    ViewData["Title"] = trip is null ? "Trip Not Found - Baruch's Treks" : trip.Title + " - Baruch's Treks";
+    var isStaff = User.Identity?.IsAuthenticated == true && User.HasClaim(AppClaims.IsAdmin, "true");
+}
+@section Styles {
+@if (trip is not null)
+{
+<style>
+    #map {
+        height: 400px;
+        width: 100%;
+        border-radius: 8px;
+    }
+    .map-style-switcher {
+        margin-top: 1rem;
+        margin-bottom: 1rem;
+    }
+    .trip-stats {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+    }
+    .stat-item {
+        margin-bottom: 10px;
+    }
+    .elevation-profile {
+        position: relative;
+        margin-top: 1rem;
+    }
+    .elevation-profile svg {
+        display: block;
+        width: 100%;
+        touch-action: none;
+    }
+    .elevation-profile .grid-line {
+        stroke: #dee2e6;
+        stroke-width: 1;
+    }
+    .elevation-profile .axis-label {
+        fill: #6c757d;
+        font-size: 11px;
+    }
+    .elevation-profile .cursor-line {
+        stroke: #6c757d;
+        stroke-width: 1;
+        stroke-dasharray: 3 3;
+    }
+    .elevation-tooltip {
+        position: absolute;
+        top: 0;
+        transform: translateX(-50%);
+        background-color: rgba(33, 37, 41, 0.9);
+        color: #fff;
+        font-size: 12px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        pointer-events: none;
+        white-space: nowrap;
+    }
+</style>
+<!-- Add Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
+      crossorigin=""/>
+}
+}
+@if (trip is null)
+{
+<div class="text-center py-5">
+    <h1 class="display-4 mb-4">Trip Not Found</h1>
+    <p class="lead">Sorry, the trip you're looking for doesn't exist or has been removed.</p>
+    <div class="mt-4">
+        <a href="/trips/all/" class="btn btn-primary">
+            <i class="bi bi-arrow-left"></i> Back to All Trips
+        </a>
+    </div>
+</div>
+}
+else
+{
+    static bool Has(string value) => value.Length > 0 && value != "none";
+<div class="row">
+    <div class="col-md-8">
+        <h1 class="mb-3">@trip.Title</h1>
+
+        @if (trip.TripCompletedOn.Length > 0)
+        {
+        <p class="text-muted">
+            <i class="bi bi-calendar-check"></i> Completed on: @trip.TripCompletedOn
+        </p>
+        }
+
+        <div class="mb-4">
+            @if (isStaff)
+            {
+            <a href="@tripUrl/edit/" class="btn btn-primary">
+                <i class="bi bi-pencil"></i> Edit Trip
+            </a>
+            <a href="@tripUrl/copy/" class="btn btn-outline-primary ms-2">
+                <i class="bi bi-files"></i> Copy Trip
+            </a>
+            <form action="@tripUrl/delete/" method="get" style="display:inline;">
+                <button type="submit" class="btn btn-outline-danger ms-2">
+                    <i class="bi bi-trash"></i> Delete Trip
+                </button>
+            </form>
+            }
+            <a href="/trips/all/" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to All Trips
+            </a>
+        </div>
+
+        <div class="mb-4">
+            <h4>Description</h4>
+            <p>@trip.Description</p>
+        </div>
+
+        @if (Model.Photos.Count > 0)
+        {
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Photos</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    @foreach (var photoUrl in Model.Photos)
+                    {
+                    <div class="col-md-3 mb-3">
+                        <div class="card">
+                            <a href="@photoUrl" data-lightbox="trip-photos" data-title="Trip Photo">
+                                <img src="@photoUrl" class="card-img-top" alt="Trip photo">
+                            </a>
+                        </div>
+                    </div>
+                    }
+                </div>
+            </div>
+        </div>
+        }
+
+        @if (trip.Participants.Length > 0)
+        {
+        <div class="mb-4">
+            <h4>Participants</h4>
+            <p>@trip.Participants</p>
+        </div>
+        }
+
+        @if (Model.ShowMap)
+        {
+        <div class="card mb-4">
+            <div class="card-header d-flex align-items-center">
+                <h5 class="mb-0 me-auto">Map</h5>
+                @if (stats is not null)
+                {
+                <a href="@tripUrl/track.gpx" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-download"></i> GPX
+                </a>
+                }
+            </div>
+            <div class="card-body">
+                <div id="map" style="height: 400px;"></div>
+                <!-- Map style switcher -->
+                <div class="map-style-switcher">
+                    <button type="button" id="trackingMapBtn" class="btn btn-outline-secondary btn-sm active">Tracking Map</button>
+                    <button type="button" id="winterMapBtn" class="btn btn-outline-secondary btn-sm">Winter Map</button>
+                </div>
+                @if (stats is { MaxElevation: not null and not 0 })
+                {
+                <!-- Filled in once the track has loaded -->
+                <div id="elevationProfile" class="elevation-profile"></div>
+                }
+            </div>
+        </div>
+        }
+    </div>
+
+    <div class="col-md-4">
+        <div class="trip-stats shadow-sm mb-4">
+            <h4 class="mb-3">Trip Statistics</h4>
+
+            <div class="stat-item">
+                <strong><i class="bi bi-clock"></i> Duration:</strong>
+                @DjangoFormat.Float(trip.LengthHours) hours
+            </div>
+
+            @if (stats is not null)
+            {
+            <div class="stat-item">
+                <strong><i class="bi bi-signpost-split"></i> Distance:</strong>
+                @DjangoFormat.Float(stats.DistanceKm) km
+            </div>
+            @if (stats is { MaxElevation: not null and not 0 })
+            {
+            <div class="stat-item">
+                <strong><i class="bi bi-triangle"></i> Max elevation:</strong>
+                @DjangoFormat.Number(stats.MaxElevation.Value) m
+            </div>
+            }
+            }
+
+            @if (trip.MetersAscend != 0)
+            {
+            <div class="stat-item">
+                <strong><i class="bi bi-arrow-up"></i> Ascent:</strong>
+                @DjangoFormat.Number(trip.MetersAscend) meters
+            </div>
+            }
+
+            @if (trip.MetersDescend != 0)
+            {
+            <div class="stat-item">
+                <strong><i class="bi bi-arrow-down"></i> Descent:</strong>
+                @DjangoFormat.Number(trip.MetersDescend) meters
+            </div>
+            }
+
+            @if (Has(trip.UiaaGrade))
+            {
+            <div class="stat-item">
+                <strong><i class="bi bi-bar-chart"></i> UIAA Grade:</strong>
+                @trip.UiaaGrade
+            </div>
+            }
+
+            @if (Has(trip.AlpineGrade))
+            {
+            <div class="stat-item">
+                <strong><i class="bi bi-mountain"></i> Alpine Grade:</strong>
+                @trip.AlpineGrade
+            </div>
+            }
+
+            @if (Has(trip.TripClass))
+            {
+            <div class="stat-item">
+                <strong><i class="bi bi-signpost-2"></i> Trip Class:</strong>
+                @trip.TripClass
+            </div>
+            }
+
+            @if (Has(trip.FerataGrade))
+            {
+            <div class="stat-item">
+                <strong><i class="bi bi-ladder"></i> Ferrata Grade:</strong>
+                @trip.FerataGrade
+            </div>
+            }
+
+            @if (Has(trip.Difficulty))
+            {
+            <div class="stat-item">
+                <strong><i class="bi bi-speedometer"></i> Difficulty:</strong>
+                @trip.Difficulty
+            </div>
+            }
+
+            @if (trip.Location.Length > 0)
+            {
+            <div class="stat-item">
+                <strong><i class="bi bi-geo-alt"></i> Location:</strong>
+                @trip.Location
+            </div>
+            }
+        </div>
+
+        <a href="/trips/all/" class="btn btn-outline-secondary w-100">
+            <i class="bi bi-arrow-left"></i> Back to All Trips
+        </a>
+    </div>
+</div>
+}
+
+@section Scripts {
+<!-- Add Leaflet JavaScript -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+
+@if (Model.ShowMap)
+{
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize map
+        var centerLat = 50.0755;
+        var centerLng = 14.4378;
+        var defaultZoom = 8;
+        var map = L.map('map').setView([centerLat, centerLng], defaultZoom);
+        
+        // API key from settings
+        const API_KEY = '@Model.MapyApiKey';
+        
+        // Map tile layer URLs
+        const MAP_STYLES = {
+            tracking: {
+                url: `https://api.mapy.cz/v1/maptiles/outdoor/256/{z}/{x}/{y}?apikey=${API_KEY}`,
+                attribution: '<a href="https://api.mapy.cz/copyright" target="_blank">&copy; Seznam.cz a.s. a další</a>'
+            },
+            winter: {
+                url: `https://api.mapy.cz/v1/maptiles/winter/256/{z}/{x}/{y}?apikey=${API_KEY}`,
+                attribution: '<a href="https://api.mapy.cz/copyright" target="_blank">&copy; Seznam.cz a.s. a další</a>'
+            }
+        };
+        let currentTileLayer = null;
+        
+        // Add the default tile layer (tracking)
+        currentTileLayer = L.tileLayer(MAP_STYLES.tracking.url, {
+            minZoom: 0,
+            maxZoom: 19,
+            attribution: MAP_STYLES.tracking.attribution,
+        }).addTo(map);
+        
+        // Map style switcher logic
+        document.getElementById('trackingMapBtn').addEventListener('click', function() {
+            if (currentTileLayer) {
+                map.removeLayer(currentTileLayer);
+            }
+            currentTileLayer = L.tileLayer(MAP_STYLES.tracking.url, {
+                minZoom: 0,
+                maxZoom: 19,
+                attribution: MAP_STYLES.tracking.attribution,
+            }).addTo(map);
+            this.classList.add('active');
+            document.getElementById('winterMapBtn').classList.remove('active');
+        });
+        document.getElementById('winterMapBtn').addEventListener('click', function() {
+            if (currentTileLayer) {
+                map.removeLayer(currentTileLayer);
+            }
+            currentTileLayer = L.tileLayer(MAP_STYLES.winter.url, {
+                minZoom: 0,
+                maxZoom: 19,
+                attribution: MAP_STYLES.winter.attribution,
+            }).addTo(map);
+            this.classList.add('active');
+            document.getElementById('trackingMapBtn').classList.remove('active');
+        });
+        
+        // Add the mapy.cz logo
+        const LogoControl = L.Control.extend({
+            options: {
+                position: 'bottomleft',
+            },
+            
+            onAdd: function (map) {
+                const container = L.DomUtil.create('div');
+                const link = L.DomUtil.create('a', '', container);
+                
+                link.setAttribute('href', 'http://mapy.cz/');
+                link.setAttribute('target', '_blank');
+                link.innerHTML = '<img src="https://api.mapy.cz/img/api/logo.svg" />';
+                L.DomEvent.disableClickPropagation(link);
+                
+                return container;
+            },
+        });
+        
+        map.addControl(new LogoControl());
+        
+        var markers = [];
+        
+        // Custom icons for markers
+        var summitIcon = L.icon({
+            iconUrl: '/img/marker-summit.svg',
+            iconSize: [32, 32],
+            iconAnchor: [16, 32],
+            popupAnchor: [0, -32]
+        });
+        
+        var parkingIcon = L.icon({
+            iconUrl: '/img/marker-parking.svg',
+            iconSize: [32, 32],
+            iconAnchor: [16, 32],
+            popupAnchor: [0, -32]
+        });
+        
+        // Add high point marker if exists
+        @if (trip!.HighPointJson.Length > 0)
+        {
+        <text>
+        try {
+            var highPointJson = JSON.parse('@Html.Raw(DjangoFormat.EscapeJs(trip!.HighPointJson))');
+            if (highPointJson && highPointJson.Latitude && highPointJson.Longtitude) {
+                var highPointMarker = L.marker([highPointJson.Latitude, highPointJson.Longtitude], {icon: summitIcon}).addTo(map);
+                highPointMarker.bindPopup("<strong>Finish Point</strong>").openPopup();
+                markers.push(highPointMarker);
+            }
+        } catch (e) {
+            console.error("Error parsing high point JSON:", e);
+        }
+        </text>
+        }
+        
+        // Add parking marker if exists
+        @if (trip!.ParkingJson.Length > 0)
+        {
+        <text>
+        try {
+            var parkingJson = JSON.parse('@Html.Raw(DjangoFormat.EscapeJs(trip!.ParkingJson))');
+            if (parkingJson && parkingJson.Latitude && parkingJson.Longtitude) {
+                var parkingMarker = L.marker([parkingJson.Latitude, parkingJson.Longtitude], {icon: parkingIcon}).addTo(map);
+                parkingMarker.bindPopup("<strong>Start Point</strong>").openPopup();
+                markers.push(parkingMarker);
+            }
+        } catch (e) {
+            console.error("Error parsing parking JSON:", e);
+        }
+        </text>
+        }
+        
+        // Fit bounds to markers if any exist
+        if (markers.length > 0) {
+            var group = new L.featureGroup(markers);
+            map.fitBounds(group.getBounds().pad(0.2));
+        }
+
+        // Draw the GPX track, loaded separately so the page renders immediately
+        @if (stats is not null)
+        {
+        @await Html.PartialAsync("_TripTrackScript", Model)
+        }
+    });
+</script>
+}
+}

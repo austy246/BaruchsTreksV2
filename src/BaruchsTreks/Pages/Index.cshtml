@@ -1,0 +1,103 @@
+@page "/trips"
+@model IndexModel
+@{
+    ViewData["Title"] = Model.Failed ? "Error - Baruch's Treks" : "Baruch's Treks - Home";
+    var isAuthenticated = User.Identity?.IsAuthenticated == true;
+}
+@if (Model.Failed)
+{
+<div class="container">
+    <div class="alert alert-danger mt-4">
+        <h4 class="alert-heading">Error Occurred</h4>
+        <p>@Model.ErrorMessage</p>
+    </div>
+
+    @if (Model.TechnicalDetails is not null)
+    {
+    <div class="card mt-4">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0">Technical Details</h5>
+        </div>
+        <div class="card-body">
+            <pre class="bg-light p-3"><code>@Model.TechnicalDetails</code></pre>
+        </div>
+    </div>
+    }
+
+    <div class="mt-4">
+        <a href="/trips/" class="btn btn-primary">
+            <i class="bi bi-house"></i> Return to Home
+        </a>
+    </div>
+</div>
+}
+else
+{
+<div class="jumbotron bg-light p-5 rounded-3 mb-4">
+    <h1 class="display-4">Welcome to Baruch's Treks</h1>
+    <p class="lead">Discover amazing mountaineering, freeride skiing in fresh tracks, and alpine adventures from around the world.</p>
+    <hr class="my-4">
+    <p>Browse through our collection of trips and find your next mountain adventure.</p>
+    <div class="d-flex gap-2">
+        <a class="btn btn-primary btn-lg" href="/trips/all/" role="button">View All Trips</a>
+        @if (isAuthenticated)
+        {
+        <a class="btn btn-success btn-lg" href="/trips/trip/new/" role="button">Create New Trip</a>
+        }
+    </div>
+</div>
+
+<h2 class="mb-4">Featured Trips</h2>
+
+<div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+    @foreach (var card in Model.Cards)
+    {
+    var trip = card.Trip;
+    <div class="col">
+        <div class="card h-100 shadow-sm">
+            @if (!string.IsNullOrEmpty(card.FirstPhoto))
+            {
+            <img src="@card.FirstPhoto" class="card-img-top" alt="@trip.Title" style="height: 180px; object-fit: cover;">
+            }
+            else
+            {
+            <div class="card-img-top bg-light d-flex align-items-center justify-content-center" style="height: 180px;">
+                <i class="bi bi-image text-muted" style="font-size: 3rem;"></i>
+            </div>
+            }
+            <div class="card-body">
+                <h5 class="card-title">@trip.Title</h5>
+                <p class="card-text text-muted">
+                    @if (trip.TripCompletedOn.Length > 0)
+                    {
+                    <small>Completed: @trip.TripCompletedOn</small>
+                    }
+                </p>
+                <p class="card-text">@DjangoFormat.TruncateWords(trip.Description, 30)</p>
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="btn-group">
+                        @if (trip.Id.Length > 0)
+                        {
+                        <a href="/trips/trip/@Uri.EscapeDataString(trip.Id)/" class="btn btn-sm btn-outline-primary">View Details</a>
+                        }
+                        else
+                        {
+                        <button class="btn btn-sm btn-outline-secondary" disabled>No Details</button>
+                        }
+                    </div>
+                    <small class="text-muted">@DjangoFormat.Float(trip.LengthHours) hours</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    }
+    @if (Model.Cards.Count == 0)
+    {
+    <div class="col-12">
+        <div class="alert alert-info">
+            No trips available at the moment. Check back later!
+        </div>
+    </div>
+    }
+</div>
+}

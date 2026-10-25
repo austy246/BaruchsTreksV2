@@ -1,0 +1,101 @@
+/* Custom styles for Baruch's Treks */
+
+:root {
+    --primary-color: #6a1b9a;    /* Deep Purple */
+    --primary-light: #9c4dcc;    /* Light Purple */
+    --primary-dark: #38006b;     /* Dark Purple */
+    --accent-color: #ff6e40;     /* Accent Orange */
+    --text-on-dark: #ffffff;     /* White text for dark backgrounds */
+    --text-color: #333333;       /* Dark text for light backgrounds */
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--text-color);
+}
+
+.navbar {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    background-color: var(--primary-color) !important;
+}
+
+.navbar-brand, .navbar-nav .nav-link {
+    color: var(--text-on-dark) !important;
+}
+
+.navbar-nav .nav-link.active {
+    color: var(--accent-color) !important;
+    font-weight: bold;
+}
+
+.card {
+    transition: transform 0.3s ease;
+    border: none;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+}
+
+.jumbotron {
+    background-image: linear-gradient(rgba(106, 27, 154, 0.7), rgba(106, 27, 154, 0.4)), url('https://images.unsplash.com/photo-1519904981063-b0cf448d479e?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80');
+    background-size: cover;
+    background-position: center;
+    color: var(--text-on-dark);
+}
+
+.btn-primary {
+    background-color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+}
+
+.btn-primary:hover {
+    background-color: var(--primary-dark) !important;
+    border-color: var(--primary-dark) !important;
+}
+
+.btn-outline-primary {
+    color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--primary-color) !important;
+    color: var(--text-on-dark) !important;
+}
+
+.btn-success {
+    background-color: var(--accent-color) !important;
+    border-color: var(--accent-color) !important;
+}
+
+footer {
+    margin-top: auto;
+    background-color: var(--primary-dark) !important;
+}
+
+/* Trip detail page */
+.trip-stats .stat-item i {
+    width: 20px;
+    text-align: center;
+    margin-right: 5px;
+    color: var(--primary-color);
+}
+
+/* Map container */
+#map {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .jumbotron {
+        padding: 2rem 1rem;
+    }
+    
+    #map {
+        height: 300px;
+    }
+}

@@ -1,0 +1,66 @@
+@page "/error"
+@model ErrorModel
+@{
+    ViewData["Title"] = Model.Status switch
+    {
+        404 => "Trip Not Found - Baruch's Treks",
+        >= 500 => "Server Error - Baruch's Treks",
+        _ => "Error - Baruch's Treks",
+    };
+}
+@if (Model.Status == 404)
+{
+<div class="text-center py-5">
+    <h1 class="display-4 mb-4">Trip Not Found</h1>
+    <p class="lead">Sorry, the trip you're looking for doesn't exist or has been removed.</p>
+    <div class="mt-4">
+        <a href="/trips/all/" class="btn btn-primary">
+            <i class="bi bi-arrow-left"></i> Back to All Trips
+        </a>
+    </div>
+</div>
+}
+else if (Model.Status >= 500)
+{
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-danger text-white">
+                <h4 class="mb-0">Server Error</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-danger">
+                    <h5>We're sorry, but something went wrong.</h5>
+                    <p>Our team has been notified and we're working to fix the issue.</p>
+                </div>
+
+                <p>This error has been logged with a reference ID. If you continue to experience problems, please contact the site administrator with the following information:</p>
+
+                <ul>
+                    <li>Time: @Model.Time</li>
+                    <li>Page: @Model.OriginalPath</li>
+                </ul>
+
+                <div class="d-grid gap-2">
+                    <a href="/trips/" class="btn btn-primary">Return to Home Page</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+}
+else
+{
+<div class="container">
+    <div class="alert alert-danger mt-4">
+        <h4 class="alert-heading">Error Occurred</h4>
+        <p>The request could not be completed (HTTP @Model.Status).</p>
+    </div>
+
+    <div class="mt-4">
+        <a href="/trips/" class="btn btn-primary">
+            <i class="bi bi-house"></i> Return to Home
+        </a>
+    </div>
+</div>
+}
