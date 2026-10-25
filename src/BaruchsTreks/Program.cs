@@ -1,6 +1,7 @@
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using BaruchsTreks.Cli;
+using BaruchsTreks.Photos;
 using BaruchsTreks.Storage;
 using BaruchsTreks.Tracks;
 using BaruchsTreks.Trips;
@@ -31,6 +32,7 @@ builder.Services.AddSingleton<StorageBootstrapper>();
 builder.Services.AddSingleton<ITripRepository, TripRepository>();
 builder.Services.AddSingleton<IConfigRepository, ConfigRepository>();
 builder.Services.AddSingleton<ITrackStore, TrackStore>();
+builder.Services.AddSingleton<IPhotoStore, PhotoStore>();
 
 var app = builder.Build();
 
