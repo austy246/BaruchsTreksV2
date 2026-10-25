@@ -27,6 +27,10 @@ set_app_image() {
 
 main() {
   local APP_DIR="${APP_DIR:-/srv/baruchstreks}"
+  # Pinned on EVERY compose call: a restored Django-era compose has no `name:`, and without a project name compose
+  # would fall back to the directory name "deploy" = the project of the shared Caddy (--remove-orphans would
+  # then remove it).
+  local PROJECT="baruchstreks"
   local IMAGE_REPO="ghcr.io/austy246/baruchstreks-app"
   local SITES="${SITES:-/srv/infra/sites}"
 
@@ -76,6 +80,14 @@ main() {
     return 0
   fi
 
+  # 4a. Never run compose under another project: an explicit COMPOSE_PROJECT_NAME that differs is a misconfiguration.
+  local env_project
+  env_project="$(grep -m1 '^COMPOSE_PROJECT_NAME=' .env | cut -d= -f2- || true)"
+  if [ -n "$env_project" ] && [ "$env_project" != "$PROJECT" ]; then
+    echo "ERROR: COMPOSE_PROJECT_NAME in .env is not $PROJECT" >&2
+    exit 1
+  fi
+
   # 4b. The domain feeds AllowedHosts (compose) and the Caddy block, so check it before touching the running app.
   # APP_DOMAIN is the source; ALLOWED_HOSTS (first entry) is the fallback for a .env that is still in the Django
   # format, which is what a rollback to a Django image needs.
@@ -84,6 +96,8 @@ main() {
   [ -n "$domain" ] || domain="$(grep -m1 '^ALLOWED_HOSTS=' .env | cut -d= -f2- | cut -d, -f1 || true)"
   [[ "$domain" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] \
     || { echo "ERROR: APP_DOMAIN (or ALLOWED_HOSTS) in .env is missing or invalid" >&2; exit 1; }
+  # The same value feeds compose (AllowedHosts) and the Caddy block, so they can never disagree.
+  export APP_DOMAIN="$domain"
 
   # 5. Deploy. APP_IMAGE is rewritten without sed so the value can never be interpreted as a pattern.
   # If the new container does not become healthy, the image that ran before is started again.
@@ -92,17 +106,18 @@ main() {
   previous="$(cat .previous-image 2>/dev/null || true)"
   [ -n "$current_ref" ] && [ "$current_ref" != "$image_ref" ] && previous="$current_ref"
   umask 077
-  set_app_image "$image_ref"
 
   echo "==> docker compose up"
-  docker compose pull app </dev/null
-  if ! docker compose up -d --wait --wait-timeout 180 --remove-orphans </dev/null; then
+  # .env is changed only after the pull succeeded, so it never names an image that did not arrive.
+  APP_IMAGE="$image_ref" docker compose -p "$PROJECT" pull app </dev/null
+  set_app_image "$image_ref"
+  if ! docker compose -p "$PROJECT" up -d --wait --wait-timeout 180 --remove-orphans </dev/null; then
     echo "ERROR: the app did not become healthy." >&2
-    docker compose ps </dev/null >&2 || true
+    docker compose -p "$PROJECT" ps </dev/null >&2 || true
     if [ -n "$current_ref" ] && [ "$current_ref" != "$image_ref" ]; then
       echo "==> rolling back to $current_ref" >&2
       set_app_image "$current_ref"
-      docker compose up -d --wait --wait-timeout 180 --remove-orphans </dev/null \
+      docker compose -p "$PROJECT" up -d --wait --wait-timeout 180 --remove-orphans </dev/null \
         || echo "ERROR: rollback did not become healthy either" >&2
     fi
     exit 1

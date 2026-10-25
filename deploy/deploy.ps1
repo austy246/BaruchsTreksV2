@@ -7,7 +7,7 @@
 .DESCRIPTION
   Without -Tag: refuses to run with tracked changes (outside .claude/) or untracked files under the build inputs
   (src/, Directory.Build.props, global.json, BaruchsTreks.slnx), tags the image with the full SHA of HEAD,
-  runs `dotnet test`, builds linux/amd64 and pushes <sha> and latest (needs `docker login ghcr.io` beforehand).
+  runs `dotnet test`, builds linux/amd64 and pushes <sha>, moves latest only after the health check (needs `docker login ghcr.io` beforehand).
   With -Tag: builds nothing, only checks that the image exists in GHCR. Use it for a rollback; it also works for a
   Django-era commit (no src/BaruchsTreks project in that commit, so no --selftest; docker-compose.yml and the Caddy
   block come from that commit, which restores port 8000 and the volume; the old Django variables stay in .env
@@ -101,9 +101,9 @@ try {
         Write-Step "dotnet test"
         Invoke-Native "dotnet test" { dotnet test }
         Write-Step "docker buildx build + push"
-        $latest = "${ImageRepo}:latest"
-        Invoke-Native "docker buildx build --platform linux/amd64 -f src/BaruchsTreks/Dockerfile -t $image -t $latest --push ." {
-            docker buildx build --platform linux/amd64 -f src/BaruchsTreks/Dockerfile -t $image -t $latest --push .
+        $latest = "${ImageRepo}:latest"   # moved only after the deploy and the health check succeeded
+        Invoke-Native "docker buildx build --platform linux/amd64 -f src/BaruchsTreks/Dockerfile -t $image --push ." {
+            docker buildx build --platform linux/amd64 -f src/BaruchsTreks/Dockerfile -t $image --push .
         }
     }
     else {
@@ -144,6 +144,10 @@ try {
             }
             if (-not $healthy) { throw "$url did not answer 200 after 5 attempts." }
             Write-Host "Deployed $image, $url is healthy." -ForegroundColor Green
+            if ($built) {
+                Write-Step "Tagging $image as latest"
+                Invoke-Native "docker buildx imagetools create -t $latest $image" { docker buildx imagetools create -t $latest $image }
+            }
         }
     }
 }

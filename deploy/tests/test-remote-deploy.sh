@@ -29,13 +29,15 @@ case "$1" in
   pull) exit 0 ;;
   run) [ "${FAKE_SELFTEST_FAIL:-0}" = 1 ] && exit 1; exit 0 ;;
   compose)
-    case "$2" in
-      pull) exit 0 ;;
+    sub="$2"; [ "$2" = "-p" ] && sub="$4"
+    case "$sub" in
+      pull) [ "${FAKE_PULL_FAIL:-0}" = 1 ] && exit 1; echo "pull env APP_IMAGE=${APP_IMAGE:-} APP_DOMAIN=${APP_DOMAIN:-}" >> "$FAKE_LOG"; exit 0 ;;
       ps) exit 0 ;;
       up)
         # "healthy" unless the image in .env is the one that must fail
         img="$(grep -m1 '^APP_IMAGE=' .env | cut -d= -f2-)"
         echo "up with $img" >> "$FAKE_LOG"
+        echo "up env APP_DOMAIN=${APP_DOMAIN:-}" >> "$FAKE_LOG"
         [ -n "${FAKE_BAD_IMAGE:-}" ] && [ "$img" = "$FAKE_BAD_IMAGE" ] && exit 1
         exit 0 ;;
     esac ;;
@@ -82,7 +84,9 @@ check "success: exit 0" test $? -eq 0
 check "success: APP_IMAGE set to the new image" test "$(env_value APP_IMAGE)" = "$NEW"
 check "success: other .env lines untouched" test "$(env_value ConnectionStrings__Storage)" = "topsecret-conn"
 check "success: previous image remembered" test "$(cat "$work/srv/deploy/.previous-image")" = "$OLD"
-check "success: compose pull + up --wait" bash -c 'grep -q "^compose pull app" "$1" && grep -q "^compose up -d --wait" "$1"' _ "$work/docker.log"
+check "success: compose pull + up --wait" bash -c 'grep -q "^compose -p baruchstreks pull app" "$1" && grep -q "^compose -p baruchstreks up -d --wait" "$1"' _ "$work/docker.log"
+check "success: EVERY compose call pins -p baruchstreks" bash -c '! grep "^compose" "$1" | grep -qv "^compose -p baruchstreks "' _ "$work/docker.log"
+check "success: compose gets APP_DOMAIN from the same value as Caddy" has_line "$work/docker.log" "up env APP_DOMAIN=treks.example.test"
 check "success: caddy block rendered with the domain" bash -c 'grep -q "^treks.example.test {" "$1" && grep -q "reverse_proxy baruchstreks-app:8080" "$1"' _ "$work/sites/baruchstreks.caddy"
 check "success: no placeholder left in the block" bash -c '! grep -q "__APP_DOMAIN__" "$1"' _ "$work/sites/baruchstreks.caddy"
 check "success: caddy validated and reloaded once" test "$(calls "$work/docker.log" 'caddy reload')" -eq 1
@@ -167,6 +171,44 @@ new_server
 rm "$work/srv/deploy/.env"
 deploy "$NEW"
 check "missing .env: exit non-zero" test $? -ne 0
+
+# 6b. Project pinning: legacy (Django-era) compose without `name:` and no COMPOSE_PROJECT_NAME in .env -----------------------
+new_server
+printf 'services:
+  app:
+    image: ${APP_IMAGE}
+' > "$work/srv/deploy/docker-compose.yml"
+sed -i '/^COMPOSE_PROJECT_NAME=/d' "$work/srv/deploy/.env"
+deploy "$NEW"
+check "legacy compose: deploys" test $? -eq 0
+check "legacy compose: every compose call pins -p baruchstreks" bash -c '[ "$(grep -c "^compose" "$1")" -ge 2 ] && ! grep "^compose" "$1" | grep -qv "^compose -p baruchstreks "' _ "$work/docker.log"
+check "legacy compose: nothing stopped/removed/downed outside compose" bash -c '! grep -Eq "^(stop|rm |kill|compose .* down)" "$1"' _ "$work/docker.log"
+check "legacy compose: shared Caddy only looked up and reloaded, never recreated" bash -c '! grep -E "^compose" "$1" | grep -q "project=deploy"' _ "$work/docker.log"
+
+new_server
+sed -i 's/^COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=deploy/' "$work/srv/deploy/.env"
+deploy "$NEW"
+check "foreign COMPOSE_PROJECT_NAME: abort" test $? -ne 0
+check "foreign COMPOSE_PROJECT_NAME: nothing ran" bash -c '! grep -q "^compose" "$1"' _ "$work/docker.log"
+check "foreign COMPOSE_PROJECT_NAME: .env unchanged" test "$(env_value APP_IMAGE)" = "$OLD"
+
+# 6c. Empty / absent APP_DOMAIN aborts before the running container is replaced ---------------------------------------------
+new_server
+sed -i 's/^APP_DOMAIN=.*/APP_DOMAIN=/' "$work/srv/deploy/.env"
+deploy "$NEW"
+check "empty APP_DOMAIN: abort" test $? -ne 0
+check "empty APP_DOMAIN: no compose pull/up" bash -c '! grep -q "^compose" "$1"' _ "$work/docker.log"
+check "empty APP_DOMAIN: app image unchanged" test "$(env_value APP_IMAGE)" = "$OLD"
+
+# 6d. .env names a new image only after the pull succeeded ---------------------------------------------------------------------
+new_server
+FAKE_PULL_FAIL=1 deploy "$NEW"
+check "failed compose pull: exit non-zero" test $? -ne 0
+check "failed compose pull: .env still names the running image" test "$(env_value APP_IMAGE)" = "$OLD"
+check "failed compose pull: compose up never ran" bash -c '! grep -q "^compose -p baruchstreks up" "$1"' _ "$work/docker.log"
+new_server
+deploy "$NEW"
+check "pull sees the new image through the environment" has_line "$work/docker.log" "pull env APP_IMAGE=$NEW APP_DOMAIN=treks.example.test"
 
 # 7. --selftest failure aborts before the app is touched -----------------------------------------------------------------------------
 new_server

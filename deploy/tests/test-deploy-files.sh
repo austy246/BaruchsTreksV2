@@ -38,7 +38,7 @@ check "remote-deploy.sh removes images with docker rmi" has "$remote" 'docker rm
 check "remote-deploy.sh cleanup is limited to the baruchstreks-app repo" has "$remote" 'IMAGE_REPO="ghcr.io/austy246/baruchstreks-app"'
 check "remote-deploy.sh skips refs outside our repo" has "$remote" 'case "\$ref" in "\$IMAGE_REPO":\*\) ;; \*\) continue ;; esac'
 check "remote-deploy.sh rolls back to the previous image" has "$remote" 'rolling back to'
-check "remote-deploy.sh uses compose up --wait" has "$remote" 'docker compose up -d --wait'
+check "remote-deploy.sh uses compose up --wait" has "$remote" 'docker compose -p "\$PROJECT" up -d --wait'
 check "remote-deploy.sh validates caddy before reload" has "$remote" 'caddy validate'
 check "remote-deploy.sh reloads caddy only for a changed block" has "$remote" 'cmp -s "\$rendered"'
 check "remote-deploy.sh restores the block when validation fails" has "$remote" 'restoring the previous file'
@@ -47,7 +47,7 @@ check "remote-deploy.sh uses baruchstreks.caddy" has "$remote" 'baruchstreks\.ca
 # --- compose ---
 check "compose: project name baruchstreks" has "$compose" '^name: baruchstreks$'
 check "compose: no volumes" lacks "$compose" '(^|[[:space:]])volumes:'
-check "compose: AllowedHosts from APP_DOMAIN plus localhost" has "$compose" 'AllowedHosts: \$\{APP_DOMAIN\};localhost'
+check "compose: AllowedHosts from a required APP_DOMAIN plus localhost" has "$compose" 'AllowedHosts: \$\{APP_DOMAIN:\?[^}]+\};localhost'
 check "compose: forwarded headers enabled" has "$compose" 'ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"'
 check "compose: ASPNETCORE_ENVIRONMENT Production" has "$compose" 'ASPNETCORE_ENVIRONMENT: Production'
 check "compose: healthcheck via dotnet BaruchsTreks.dll --healthcheck" has "$compose" '"dotnet", "BaruchsTreks.dll", "--healthcheck"'
@@ -100,6 +100,9 @@ check "workflow: ssh key removed at the end" has "$workflow" 'rm -f ~/\.ssh/id_d
 
 # --- no -i in the local script either ---
 check "deploy.ps1: ssh without -i" lacks "$root/deploy/deploy.ps1" 'ssh -i|-SshKey'
+check "deploy.ps1: build pushes only the sha tag" bash -c '! grep -E "buildx build.* -t [^ ]*latest" "$1"' _ "$root/deploy/deploy.ps1"
+check "deploy.ps1: latest moved with imagetools after the health check" bash -c '[ "$(grep -n "is healthy" "$1" | cut -d: -f1 | head -1)" -lt "$(grep -n "imagetools create" "$1" | cut -d: -f1 | head -1)" ]' _ "$root/deploy/deploy.ps1"
+check "remote-deploy.sh: every compose call pins the project" bash -c '! grep -E "docker compose " "$1" | grep -Ev "^[[:space:]]*(#|echo)" | grep -v -- "-p \"\$PROJECT\"" | grep -q .' _ "$remote"
 check "deploy.ps1: GHCR login hint" has "$root/deploy/deploy.ps1" 'gh auth token \| docker login ghcr\.io -u austy246 --password-stdin'
 check "deploy.ps1: -Tag parameter" has "$root/deploy/deploy.ps1" '\[string\]\$Tag'
 check "deploy.ps1: files taken from the deployed commit (git archive)" has "$root/deploy/deploy.ps1" 'git archive --format=tar \$commit deploy'
