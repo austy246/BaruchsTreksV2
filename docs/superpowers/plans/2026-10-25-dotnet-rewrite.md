@@ -66,7 +66,7 @@ deploy/ deploy.ps1, docker-compose.yml, baruchstreks.caddy, remote-deploy.sh, mi
 
 ---
 
-### Úkol 1: Kostra řešení
+### Task 1: Kostra řešení
 
 **Files:** Create `global.json`, `BaruchsTreks.slnx`, `Directory.Build.props`, `.gitattributes` (`*.sh eol=lf`), `src/BaruchsTreks/{BaruchsTreks.csproj,Program.cs,Cli/HealthCheckCommand.cs,appsettings.json,appsettings.Development.json}`, `tests/BaruchsTreks.Tests/{BaruchsTreks.Tests.csproj,Integration/HealthTests.cs,Infrastructure/AzuriteFixture.cs,Infrastructure/AppFactory.cs}`; Modify `.dockerignore` (bin/obj), `.gitignore`.
 
@@ -79,7 +79,7 @@ deploy/ deploy.ps1, docker-compose.yml, baruchstreks.caddy, remote-deploy.sh, mi
 - [ ] **Step 3:** Implementovat `/healthz`, Kestrel limit 50 MB, forwarded headers, `AllowedHosts`. `dotnet test` → PASS.
 - [ ] **Step 4:** Commit a push: `feat: solution skeleton, healthz`.
 
-### Úkol 2: Zlaté soubory GPX a GPX parser
+### Task 2: Zlaté soubory GPX a GPX parser
 
 **Files:** Create `tools/golden/make_golden.py`, `tests/BaruchsTreks.Tests/Fixtures/gpx/*.gpx` + `*.expected.json`, `src/BaruchsTreks/Tracks/{GpxParser.cs,TrackStats.cs,GpxBuilder.cs}`, `tests/BaruchsTreks.Tests/Unit/{GpxParserTests.cs,GpxBuilderTests.cs}`. Zdroj chování: `trips/gpx_service.py`, GPX vzorky a testy v `trips/tests.py:20-200`.
 
@@ -91,7 +91,7 @@ deploy/ deploy.ps1, docker-compose.yml, baruchstreks.caddy, remote-deploy.sh, mi
 - [ ] **Step 3:** Implementovat vlastním `System.Xml` parserem (namespace-agnostic čtení `trkpt`/`rtept`), Douglas-Peucker a statistiky podle `gpx_service.py`. Build GPX podle `build_gpx`. PASS.
 - [ ] **Step 4:** Commit a push: `feat: GPX parser with golden tests`.
 
-### Úkol 3: Storage, model výletu, tolerantní mapování, repozitář
+### Task 3: Storage, model výletu, tolerantní mapování, repozitář
 
 **Files:** Create `src/BaruchsTreks/Storage/{StorageOptions.cs,StorageBootstrapper.cs,TableValue.cs}`, `src/BaruchsTreks/Trips/{Trip.cs,TripEntityMapper.cs,TripRepository.cs,TripListing.cs}`, `tests/BaruchsTreks.Tests/Infrastructure/{TestStorage.cs,LegacyEntities.cs}`, `tests/.../Unit/TripEntityMapperTests.cs`, `tests/.../Integration/{TripRepositoryTests.cs,LegacyEntityTests.cs,StorageBootstrapperTests.cs}`. Zdroj chování: `trips/azure_service.py` (kompletně), `trips/views.py:219-300`, `534-581`.
 
@@ -103,7 +103,7 @@ deploy/ deploy.ps1, docker-compose.yml, baruchstreks.caddy, remote-deploy.sh, mi
 - [ ] **Step 2:** Implementovat, entity číst přes slovník (`TableEntity`) s tolerantním převodem; zápis přes merge. PASS.
 - [ ] **Step 3:** Commit a push: `feat: trip model, tolerant mapping, repositories, storage bootstrap`.
 
-### Úkol 4: Úložiště tras a porovnání s GPX
+### Task 4: Úložiště tras a porovnání s GPX
 
 **Files:** Create `src/BaruchsTreks/Tracks/{TrackStore.cs,TrackFieldComparer.cs}`, `tests/.../Integration/TrackStoreTests.cs`, `tests/.../Unit/TrackFieldComparerTests.cs`. Zdroj: `trips/blob_service.py:215-347`, `trips/views.py:87-216` (`track_stats`, `GPX_FIELDS`, `derived_from_track`, `compare_with_track`).
 
@@ -114,7 +114,7 @@ deploy/ deploy.ps1, docker-compose.yml, baruchstreks.caddy, remote-deploy.sh, mi
 - [ ] **Step 2:** Implementovat. PASS.
 - [ ] **Step 3:** Commit a push: `feat: track store and GPX field comparison`.
 
-### Úkol 5: Fotky a převod HEIC
+### Task 5: Fotky a převod HEIC
 
 **Files:** Create `src/BaruchsTreks/Photos/{PhotoProcessor.cs,PhotoStore.cs}`, `tests/.../Fixtures/sample.heic` (převzít z ToiletLabels), `tests/.../Infrastructure/TestImages.cs`, `tests/.../Unit/PhotoProcessorTests.cs`, `tests/.../Integration/PhotoStoreTests.cs`. Zdroj: `trips/blob_service.py:1-215`.
 
@@ -125,7 +125,7 @@ deploy/ deploy.ps1, docker-compose.yml, baruchstreks.caddy, remote-deploy.sh, mi
 - [ ] **Step 2:** Implementovat přes Magick.NET-Q8-x64. PASS.
 - [ ] **Step 3:** Commit a push: `feat: photo store with HEIC to JPEG conversion`.
 
-### Úkol 6: Uživatelé, přihlášení, Data Protection
+### Task 6: Uživatelé, přihlášení, Data Protection
 
 **Files:** Create `src/BaruchsTreks/Users/{AppUser.cs,UserRepository.cs,AdminSeeder.cs,AuthSetup.cs}`, `src/BaruchsTreks/Pages/{Login,Logout}.cshtml(.cs)`, `tests/.../Integration/{AuthTests.cs,AdminSeederTests.cs}`. Zdroj: ToiletLabels `Users/*`, `trips/auth_views.py`, `templates/auth/*.html`.
 
@@ -136,7 +136,7 @@ deploy/ deploy.ps1, docker-compose.yml, baruchstreks.caddy, remote-deploy.sh, mi
 - [ ] **Step 2:** Implementovat, texty a chybová hlášení loginu převzít z `auth_views.py` a `login.html`. PASS.
 - [ ] **Step 3:** Commit a push: `feat: table-backed users, cookie auth, blob data protection`.
 
-### Úkol 7: Čtecí stránky (přehled, seznam, detail, stažení trasy)
+### Task 7: Čtecí stránky (přehled, seznam, detail, stažení trasy)
 
 **Files:** Create `src/BaruchsTreks/Pages/{Index,AllTrips,TripDetail,Error}.cshtml(.cs)`, `Pages/Shared/_Layout.cshtml`, `Pages/_ViewImports.cshtml`, `_ViewStart.cshtml`, `wwwroot/css/style.css`, `Pages/TrackFiles` (endpointy `track.geojson`, `track.gpx`), `tests/.../Integration/{ReadPagesTests.cs,CultureTests.cs}`. Zdroj: `templates/base.html`, `templates/trips/{index,all_trips,detail,error,not_found}.html`, `static/css/style.css`, `trips/views.py:219-302`, `582-608`.
 
@@ -148,7 +148,7 @@ deploy/ deploy.ps1, docker-compose.yml, baruchstreks.caddy, remote-deploy.sh, mi
 - [ ] **Step 2:** Převést šablony 1:1 do Razor. PASS.
 - [ ] **Step 3:** Commit a push: `feat: read-only trip pages`.
 
-### Úkol 8: Vytvoření, úprava, kopie, mazání, nahrání GPX a fotek
+### Task 8: Vytvoření, úprava, kopie, mazání, nahrání GPX a fotek
 
 **Files:** Create `src/BaruchsTreks/Pages/{TripEdit,TripCopy,TripDelete,TrackApply,TrackDelete}.cshtml(.cs)`, `Pages/Shared/_TripForm.cshtml`, `src/BaruchsTreks/Trips/TripForm.cs` (modelová vazba formuláře s volbami z `TripEditForm`), `tests/.../Integration/{TripEditTests.cs,TrackUploadTests.cs,UploadLimitTests.cs}`. Zdroj: `trips/forms.py`, `trips/views.py:27-85`, `317-532`, `610-682`, `templates/trips/{edit,confirm_delete,track_apply}.html`.
 
@@ -160,7 +160,7 @@ deploy/ deploy.ps1, docker-compose.yml, baruchstreks.caddy, remote-deploy.sh, mi
 - [ ] **Step 2:** Implementovat. PASS.
 - [ ] **Step 3:** Commit a push: `feat: trip create/edit/copy/delete and uploads`.
 
-### Úkol 9: Strava
+### Task 9: Strava
 
 **Files:** Create `src/BaruchsTreks/Strava/{IStravaClient.cs,StravaClient.cs,StravaTokenStore.cs,StravaService.cs}`, `src/BaruchsTreks/Pages/Strava{Activities,Connect,Callback,Disconnect,Import}.cshtml(.cs)`, `tests/.../Infrastructure/FakeStravaClient.cs`, `tests/.../Integration/StravaTests.cs`, `tests/.../Unit/StravaServiceTests.cs`. Zdroj: `trips/strava_service.py`, `trips/views.py:685-840`, `templates/trips/strava.html`.
 
@@ -171,7 +171,7 @@ deploy/ deploy.ps1, docker-compose.yml, baruchstreks.caddy, remote-deploy.sh, mi
 - [ ] **Step 2:** Implementovat. PASS.
 - [ ] **Step 3:** Commit a push: `feat: optional Strava import`.
 
-### Úkol 10: Režim `--check-data`, `--selftest`, Docker image, lokální prostředí
+### Task 10: Režim `--check-data`, `--selftest`, Docker image, lokální prostředí
 
 **Files:** Create `src/BaruchsTreks/Cli/{CheckDataCommand.cs,SelfTestCommand.cs}`, `src/BaruchsTreks/Dockerfile`, `docker-compose.yml`, `.env.example`, `tests/.../Integration/CheckDataTests.cs`. Zdroj: ToiletLabels `Cli/`, `src/ToiletLabels/Dockerfile`, `docker-compose.yml`.
 
@@ -183,7 +183,7 @@ deploy/ deploy.ps1, docker-compose.yml, baruchstreks.caddy, remote-deploy.sh, mi
 - [ ] **Step 2:** Sestavit image a spustit `docker run --rm baruchstreks-app:local --selftest` → exit 0. `docker compose up -d --wait` → `curl localhost:8100/healthz` vrací 200. Změřit velikost image a paměť (`docker stats --no-stream`), zapsat do `docs/mereni.md`.
 - [ ] **Step 3:** Commit a push: `feat: check-data, selftest, Docker image, local compose`.
 
-### Úkol 11: Nasazení a CI
+### Task 11: Nasazení a CI
 
 **Files:** Create `.github/workflows/deploy.yml`, `deploy/{deploy.ps1,docker-compose.yml,baruchstreks.caddy,remote-deploy.sh,migrate-env.sh,update-env-secrets.sh}`, `deploy/tests/test-migrate-env.sh`; Delete `deploy/gen-env.sh` a starý `deploy/docker-compose.yml`/`baruchstreks.caddy`/`update-env-secrets.sh` (nahrazeny; ve stejném commitu). Zdroj: odpovídající soubory z ToiletLabels.
 
@@ -198,7 +198,7 @@ deploy/ deploy.ps1, docker-compose.yml, baruchstreks.caddy, remote-deploy.sh, mi
 - [ ] **Step 2:** Spustit `bash deploy/tests/test-migrate-env.sh` → PASS; `actionlint` (pokud dostupný) nebo `docker run --rm rhysd/actionlint` na workflow → bez chyb.
 - [ ] **Step 3:** Commit **bez pushe**. Push tohoto úkolu spustí nové CI a deploy, proto se pushne až při cutoveru (úkol 12) po souhlasu majitele.
 
-### Úkol 12: Základní měření Django a cutover na VPS (provádí controller, se zastávkami)
+### Task 12: Základní měření Django a cutover na VPS (provádí controller, se zastávkami)
 
 **Files:** Create `docs/mereni.md` (doplnit), Modify `docs/migrace-vps.md` později v úkolu 13.
 
@@ -209,7 +209,7 @@ deploy/ deploy.ps1, docker-compose.yml, baruchstreks.caddy, remote-deploy.sh, mi
 - [ ] **Step 5:** Ověření: přehled, detail s fotkami, trasa se start/cíl, login obou adminů, restart kontejneru bez odhlášení, `/healthz`. Zápisové zkoušky jen se souhlasem majitele. Změřit novou verzi stejnými příkazy a doplnit srovnání do `docs/mereni.md`.
 - [ ] **Step 6: Stop – souhlas majitele**, pak smazat volume `baruchstreks_app_data`, staré proměnné v `.env` a nepoužívané secrets.
 
-### Úkol 13: Odstranění Djanga a dokumentace
+### Task 13: Odstranění Djanga a dokumentace
 
 **Files:** Delete `baruchstreks/`, `trips/`, `templates/`, `static/`, `manage.py`, `requirements.txt`, kořenový `Dockerfile`, `docker-entrypoint.sh`, `tools/golden/`; Modify `README.md`, `CLAUDE.md` (nový), `docs/migrace-vps.md` → `docs/provoz-vps.md`.
 
