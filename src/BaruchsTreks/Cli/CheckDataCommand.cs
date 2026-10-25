@@ -2,6 +2,7 @@ using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
+using BaruchsTreks.Photos;
 using BaruchsTreks.Storage;
 using BaruchsTreks.Trips;
 
@@ -60,11 +61,6 @@ public static class CheckDataCommand
         {
             return await CheckAsync(tables, blobs, options, output, read, cancellationToken);
         }
-        catch (TableNotFoundException ex)
-        {
-            await output.WriteLineAsync($"Table {ex.TableName} not found");
-            return 1;
-        }
         catch (RequestFailedException ex)
         {
             // Jen status a kód: zpráva SDK může obsahovat adresu a hlavičky požadavku.
@@ -106,13 +102,15 @@ public static class CheckDataCommand
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    unreadable.Add($"{entity.RowKey}: {ex.Message}");
+                    // Jen klíč a typ výjimky: zpráva mapperu může obsahovat obsah entity.
+                    unreadable.Add($"{entity.RowKey}: {ex.GetType().Name}");
                 }
             }
         }
         catch (RequestFailedException ex) when (ex.Status == 404 && ex.ErrorCode == "TableNotFound")
         {
-            throw new TableNotFoundException(options.TripsTable);
+            await output.WriteLineAsync($"Table {options.TripsTable} not found");
+            return 1;
         }
 
         // Config řádky: jen počet a parsovatelnost JSON; hodnota (tokeny) se nikdy nevypisuje.
@@ -150,7 +148,12 @@ public static class CheckDataCommand
         }, ct);
 
         var heic = photoNames.Where(p => IsHeic(p.Name, p.ContentType)).Select(p => p.Name).Order(StringComparer.Ordinal).ToList();
-        var orphans = trackBlobs.Keys.Where(id => !tripKeys.Contains(id)).Order(StringComparer.Ordinal).ToList();
+        // Blob bez lomítka nepatří žádnému výletu: štítek (root)/jméno místo prázdné položky.
+        var orphans = trackBlobs
+            .Where(t => !tripKeys.Contains(t.Key))
+            .SelectMany(t => t.Key.Length == 0 ? t.Value.Select(f => $"(root)/{f}") : [t.Key])
+            .Order(StringComparer.Ordinal)
+            .ToList();
         var incomplete = new List<string>();
         foreach (var id in tripsWithTrack.Order(StringComparer.Ordinal))
         {
@@ -174,6 +177,13 @@ public static class CheckDataCommand
             await output.WriteLineAsync($"Config rows with an empty Value: {emptyConfig}");
 
         await output.WriteLineAsync($"Photos: {photoNames.Count}{(photosMissing ? " (container not found)" : "")}");
+        if (photoNames.Count > 0)
+        {
+            // Jedna ukázková veřejná URL (bez tajemství), aby ji majitel před přepnutím otevřel v prohlížeči.
+            var sample = photoNames.Select(p => p.Name).Order(StringComparer.Ordinal).First();
+            await output.WriteLineAsync(
+                $"Sample public photo URL: {PhotoStore.PublicUrl(options, blobs.GetBlobContainerClient(options.PhotosContainer), sample)}");
+        }
         await output.WriteLineAsync($"HEIC/HEIF photos (browsers cannot display them): {heic.Count}");
         await WriteListAsync(output, heic);
 
@@ -258,10 +268,5 @@ public static class CheckDataCommand
 
         public override string ToString() =>
             $"Int32 {_int32}, Int64 {_int64}, Double {_double}, missing {_missing}, other {_other}";
-    }
-
-    private sealed class TableNotFoundException(string tableName) : Exception
-    {
-        public string TableName { get; } = tableName;
     }
 }

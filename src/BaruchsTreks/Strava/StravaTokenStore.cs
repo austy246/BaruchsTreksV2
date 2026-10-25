@@ -13,7 +13,10 @@ public sealed class StravaTokenStore(IConfigRepository config)
 {
     public static string Key(string userName) => $"strava_tokens_{userName}";
 
-    /// <summary>Uložené tokeny, nebo <c>null</c> (neexistují, jsou prázdné nebo nečitelné).</summary>
+    /// <summary>
+    /// Uložené tokeny, nebo <c>null</c> (neexistují, jsou prázdné, nečitelné, nebo je to objekt bez
+    /// <c>access_token</c> a <c>refresh_token</c>, např. <c>{}</c>; jako Python <c>if not tokens</c>).
+    /// </summary>
     public async Task<JsonObject?> GetAsync(string userName)
     {
         var raw = await config.GetAsync(Key(userName));
@@ -21,13 +24,19 @@ public sealed class StravaTokenStore(IConfigRepository config)
             return null;
         try
         {
-            return JsonNode.Parse(raw) as JsonObject;
+            return JsonNode.Parse(raw) is JsonObject tokens && tokens.Count > 0
+                && (HasText(tokens["access_token"]) || HasText(tokens["refresh_token"]))
+                    ? tokens
+                    : null;
         }
         catch (JsonException)
         {
             return null;
         }
     }
+
+    private static bool HasText(JsonNode? node) =>
+        node is JsonValue value && value.TryGetValue<string>(out var text) && text.Length > 0;
 
     public Task SaveAsync(string userName, JsonObject tokens) => config.SaveAsync(Key(userName), tokens.ToJsonString());
 

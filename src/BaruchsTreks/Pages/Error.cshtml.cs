@@ -16,7 +16,7 @@ public class ErrorModel(TimeProvider clock) : PageModel
     /// <summary>Cesta původního požadavku (bez dotazu), jako <c>request.path</c> v Django.</summary>
     public string OriginalPath { get; private set; } = "";
 
-    public string Time => clock.GetUtcNow().ToString("yyyy-MM-dd HH:mm:ss");
+    public string Time => clock.GetUtcNow().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
 
     // Stránka musí odpovědět na každou metodu původního požadavku (výjimka mohla vzniknout při POST).
     public void OnGet() => Init();

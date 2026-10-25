@@ -103,7 +103,45 @@ public class CheckDataTests(AzuriteFixture azurite)
         var text = output.ToString();
         Assert.Equal(1, exitCode);
         Assert.Contains("Trips: 2, unreadable: 1", text);
-        Assert.Contains($"{TripB}: bad value", text);
+        Assert.Contains($"{TripB}: FormatException", text);
+        Assert.DoesNotContain("bad value", text);
+    }
+
+    [Fact]
+    public async Task CheckData_PrintsOneSamplePublicPhotoUrl_ForTheConfiguredBase()
+    {
+        var storage = new TestStorage(azurite);
+        await SeedAsync(storage);
+        var config = new ConfigurationBuilder()
+            .AddConfiguration(ConfigFor(storage))
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Storage:PublicBlobBaseUrl"] = "https://baruchstreks.blob.core.windows.net/" })
+            .Build();
+        var output = new StringWriter();
+
+        await CheckDataCommand.RunAsync(config, output, Ct);
+
+        var text = output.ToString();
+        var expected = $"https://baruchstreks.blob.core.windows.net/{storage.Options.PhotosContainer}/{TripB}/phone.heif"; // první podle jména
+        Assert.Contains($"Sample public photo URL: {expected}", text);
+        Assert.Single(text.Split('\n'), l => l.StartsWith("Sample public photo URL:", StringComparison.Ordinal));
+        Assert.DoesNotContain("AccountKey", text);
+    }
+
+    [Fact]
+    public async Task CheckData_RootLevelTrackBlob_IsLabelled()
+    {
+        var storage = new TestStorage(azurite);
+        await storage.TripsTableClient.CreateIfNotExistsAsync(Ct);
+        var tracks = storage.Blobs.GetBlobContainerClient(storage.Options.TracksContainer);
+        await tracks.CreateIfNotExistsAsync(cancellationToken: Ct);
+        await UploadAsync(tracks, "loose.gpx", "application/gpx+xml");
+        var output = new StringWriter();
+
+        await CheckDataCommand.RunAsync(ConfigFor(storage), output, Ct);
+
+        var text = output.ToString();
+        Assert.Contains("Orphan tracks (no trip): 1", text);
+        Assert.Contains("  (root)/loose.gpx", text);
     }
 
     [Fact]

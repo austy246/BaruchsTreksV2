@@ -44,7 +44,8 @@ public sealed class StravaClient(HttpClient http) : IStravaClient
         }
         catch (JsonException)
         {
-            throw new StravaHttpException((int)response.StatusCode, body);
+            // Nečitelné tělo 200 (token endpoint = tokeny) se dál nenese ani nezapisuje do logu: výjimka dostane prázdné tělo.
+            throw new StravaHttpException((int)response.StatusCode, "");
         }
     }
 }

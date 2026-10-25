@@ -371,4 +371,18 @@ public class StravaServiceTests
 
         Assert.False(await rig.Service.IsConnectedAsync(User));
     }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"athlete\": {\"id\": 1}}")]
+    [InlineData("{\"access_token\": \"\", \"refresh_token\": null}")]
+    [InlineData("[]")]
+    public async Task StoredRowWithoutTokens_CountsAsNotConnected(string json)
+    {
+        var rig = Create();
+        rig.Config.Rows[Key] = json;
+
+        Assert.False(await rig.Service.IsConnectedAsync(User));
+        await Assert.ThrowsAsync<StravaNotConnected>(() => rig.Service.GetAccessTokenAsync(User));
+    }
 }

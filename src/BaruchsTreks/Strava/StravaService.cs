@@ -24,7 +24,7 @@ public sealed record StravaGpx(byte[] Gpx, StravaActivity Activity);
 
 /// <summary>
 /// Strava v3 API a uložení tokenů (<c>trips/strava_service.py</c>). Čte jen aktivity připojeného uživatele.
-/// Veškerý síťový provoz jde přes <see cref="IStravaClient"/>. Tokeny a secret se nikdy nelogují a nejsou ve zprávách.
+/// Veškerý síťový provoz jde přes <see cref="IStravaClient"/>. Tokeny a secret se nikdy nezapisuje do logují a nejsou ve zprávách.
 /// </summary>
 public sealed class StravaService(
     IStravaClient client,
@@ -121,8 +121,8 @@ public sealed class StravaService(
         }
         catch (StravaHttpException ex)
         {
-            // Tělo odpovědi jen do logu a zkrácené; uživateli stačí stav.
-            logger.LogWarning("Strava token request failed with HTTP {Status}: {Body}", ex.StatusCode, Truncate(ex.Body));
+            // Do logu jen stav a bezpečné shrnutí chyby (message, kódy); surové tělo token endpointu se nikdy nezapisuje do logu.
+            logger.LogWarning("Strava token request failed with HTTP {Status}: {Detail}", ex.StatusCode, ex.Body);
             throw new StravaError($"{failure} ({ex.StatusCode}).");
         }
         catch (Exception ex) when (IsNetworkFailure(ex))
@@ -134,6 +134,7 @@ public sealed class StravaService(
 
     // ----- uložení tokenů -----
 
+    // Jako Python (`if not tokens`): řádek bez access_token a refresh_token (např. `{}`) není propojení.
     public async Task<bool> IsConnectedAsync(string userName) => await tokens.GetAsync(userName) is not null;
 
     public Task DisconnectAsync(string userName) => tokens.DeleteAsync(userName);
@@ -193,7 +194,7 @@ public sealed class StravaService(
                 throw new StravaNotConnected("Přístup k účtu Strava vypršel, propoj ho prosím znovu.");
             if (ex.StatusCode == 429)
                 throw new StravaError("Překročen limit požadavků na Stravu, zkus to prosím za chvíli.");
-            logger.LogWarning("Strava API {Path} failed with HTTP {Status}: {Body}", path, ex.StatusCode, Truncate(ex.Body));
+            logger.LogWarning("Strava API {Path} failed with HTTP {Status}: {Detail}", path, ex.StatusCode, ex.Body);
             throw new StravaError($"Strava vrátila chybu {ex.StatusCode}.");
         }
         catch (Exception ex) when (IsNetworkFailure(ex))
@@ -326,6 +327,4 @@ public sealed class StravaService(
 
     private static bool IsNetworkFailure(Exception ex) =>
         ex is HttpRequestException || (ex is TaskCanceledException && ex.InnerException is TimeoutException);
-
-    private static string Truncate(string body) => body.Length <= 300 ? body : body[..300] + "…";
 }
