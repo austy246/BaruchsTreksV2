@@ -1,3 +1,4 @@
+using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using BaruchsTreks.Storage;
@@ -7,7 +8,10 @@ namespace BaruchsTreks.Photos;
 
 public interface IPhotoStore
 {
-    /// <summary>Uloží fotku jako <c>{tripId}/{yyyyMMddHHmmss}{přípona}</c> a vrátí její veřejnou URL.</summary>
+    /// <summary>
+    /// Uloží fotku jako <c>{tripId}/{yyyyMMddHHmmss}{přípona}</c> a vrátí její veřejnou URL. Nikdy nepřepíše existující fotku:
+    /// při shodě jména se použije následující sekunda.
+    /// </summary>
     Task<string> UploadAsync(string tripId, Stream content, string fileName);
 
     /// <summary>Veřejné URL všech fotek výletu (pořadí podle jména bloku).</summary>
@@ -24,6 +28,8 @@ public interface IPhotoStore
 public sealed class PhotoStore(BlobServiceClient blobs, IOptions<StorageOptions> options, TimeProvider? clock = null)
     : IPhotoStore
 {
+    private const int MaxNameAttempts = 600;
+
     private readonly StorageOptions _options = options.Value;
     private readonly BlobContainerClient _container = blobs.GetBlobContainerClient(options.Value.PhotosContainer);
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
@@ -34,15 +40,35 @@ public sealed class PhotoStore(BlobServiceClient blobs, IOptions<StorageOptions>
         var photo = PhotoProcessor.Prepare(content, fileName);
         using var photoContent = photo.Content;
 
-        var timestamp = _clock.GetLocalNow().ToString("yyyyMMddHHmmss");
-        var blobName = $"{tripId}/{timestamp}{photo.Extension}";
-
         // Existující kontejner se nijak nemění (bootstrapper ho obvykle už vytvořil).
         await _container.CreateIfNotExistsAsync(PublicAccessType.None);
-        await _container.GetBlobClient(blobName).UploadAsync(
-            photoContent,
-            new BlobUploadOptions { HttpHeaders = new BlobHttpHeaders { ContentType = photo.ContentType } });
-        return PublicUrl(blobName);
+
+        // Jméno má přesnost na sekundu, takže víc fotek nahraných naráz by se přepisovalo (chyba původního Pythonu).
+        // Zápis proto nikdy nepřepisuje: při kolizi se zkusí následující sekunda, jméno zůstává {yyyyMMddHHmmss}{přípona}.
+        var start = _clock.GetLocalNow();
+        for (var attempt = 0; attempt < MaxNameAttempts; attempt++)
+        {
+            var stamp = start.AddSeconds(attempt).ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture);
+            var blobName = $"{tripId}/{stamp}{photo.Extension}";
+            photoContent.Position = 0;
+            try
+            {
+                await _container.GetBlobClient(blobName).UploadAsync(
+                    photoContent,
+                    new BlobUploadOptions
+                    {
+                        HttpHeaders = new BlobHttpHeaders { ContentType = photo.ContentType },
+                        Conditions = new BlobRequestConditions { IfNoneMatch = ETag.All },
+                    });
+                return PublicUrl(blobName);
+            }
+            catch (RequestFailedException ex) when (ex.Status is 409 or 412)
+            {
+                // Jméno je obsazené, zkusí se další sekunda.
+            }
+        }
+
+        throw new InvalidOperationException("Could not allocate a unique photo name.");
     }
 
     public async Task<IReadOnlyList<string>> ListAsync(string tripId)

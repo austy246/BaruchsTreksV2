@@ -120,4 +120,33 @@ public class PhotoStoreTests(AzuriteFixture azurite)
 
         Assert.Single(await store.ListAsync("trip_1"));
     }
+
+    [Fact]
+    public async Task Upload_SameSecondSameExtension_NeverOverwrites()
+    {
+        // Pevné hodiny: všechny tři nahrání spadnou do téže sekundy.
+        var (storage, store) = Create(azurite);
+
+        byte[][] sources = [TestImages.Png(4, 4), TestImages.Jpeg(5, 5), TestImages.Png(6, 20)];
+        var first = await store.UploadAsync("trip_1", new MemoryStream(sources[0]), "a.png");
+        var second = await store.UploadAsync("trip_1", new MemoryStream(sources[1]), "b.png");
+        var third = await store.UploadAsync("trip_1", new MemoryStream(sources[2]), "c.png");
+
+        Assert.Equal(3, new[] { first, second, third }.Distinct().Count());
+        var listed = await store.ListAsync("trip_1");
+        Assert.Equal(3, listed.Count);
+        Assert.EndsWith("/trip_1/20250815103005.png", first);
+        Assert.All(listed, url => Assert.Matches(@"/trip_1/\d{14}\.png$", url));
+        // Každá fotka zůstala svá: obsah bloků je přesně to, co se nahrálo.
+        var container = storage.Blobs.GetBlobContainerClient(storage.Options.PhotosContainer);
+        var stored = new List<string>();
+        foreach (var url in listed)
+        {
+            var name = "trip_1/" + url[(url.LastIndexOf('/') + 1)..];
+            var content = (await container.GetBlobClient(name).DownloadContentAsync(Ct)).Value.Content.ToArray();
+            stored.Add(Convert.ToBase64String(content));
+        }
+
+        Assert.Equal(sources.Select(Convert.ToBase64String).Order(), stored.Order());
+    }
 }
