@@ -187,7 +187,7 @@ else
 
             <div class="stat-item">
                 <strong><i class="bi bi-clock"></i> Duration:</strong>
-                @DjangoFormat.Float(trip.LengthHours) hours
+                @trip.LengthHoursText hours
             </div>
 
             @if (stats is not null)

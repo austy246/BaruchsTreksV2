@@ -146,7 +146,7 @@ public sealed partial class TripForm
         Title = trip.Title,
         Description = trip.Description,
         TripCompletedOn = trip.TripCompletedOn.Length > 10 ? trip.TripCompletedOn[..10] : trip.TripCompletedOn,
-        LengthHours = DjangoFormat.Number(trip.LengthHours),
+        LengthHours = trip.LengthHoursText,
         Participants = trip.Participants,
         MetersAscend = DjangoFormat.Number(trip.MetersAscend),
         MetersDescend = DjangoFormat.Number(trip.MetersDescend),

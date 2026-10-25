@@ -27,6 +27,7 @@ public static class TripEntityMapper
             Description = TableValue.String(e, "Description"),
             TripCompletedOn = completed,
             LengthHours = TableValue.Number(e, "LengthHours", 0),
+            LengthHoursIsInteger = e.TryGetValue("LengthHours", out var rawHours) && rawHours is int or long,
             Location = TableValue.String(e, "Location"),
             ElevationGain = TableValue.Number(e, "ElevationGain", 0),
             Difficulty = TableValue.String(e, "Difficulty"),

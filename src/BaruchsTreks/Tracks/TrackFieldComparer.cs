@@ -65,7 +65,7 @@ public static class TrackFieldComparer
     {
         "meters_ascend" => MetersValue(trip.MetersAscend),
         "meters_descend" => MetersValue(trip.MetersDescend),
-        "length_hours" => trip.LengthHours,
+        "length_hours" => trip.LengthHoursIsInteger ? (object)(long)trip.LengthHours : trip.LengthHours,
         "trip_completed_on" => trip.TripCompletedOn,
         "parking_json" => trip.ParkingJson,
         "high_point_json" => trip.HighPointJson,

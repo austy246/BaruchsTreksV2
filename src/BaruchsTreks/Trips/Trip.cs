@@ -14,6 +14,15 @@ public sealed record Trip
     public string TripCompletedOn { get; init; } = "";
 
     public double LengthHours { get; init; }
+
+    /// <summary>
+    /// <c>LengthHours</c> je v tabulce uložené jako Int32/Int64 (Python <c>int</c>). Django vypisuje hodnotu podle
+    /// typu, který přečte (<c>16</c> vs. <c>3.0</c>), takže zobrazení musí typ zachovat.
+    /// </summary>
+    public bool LengthHoursIsInteger { get; init; }
+
+    /// <summary>Text délky jako Django <c>{{ trip.length_hours }}</c>: celé číslo bez ".0", Double jako Python float.</summary>
+    public string LengthHoursText => LengthHoursIsInteger ? DjangoFormat.Number(LengthHours) : DjangoFormat.Float(LengthHours);
     public string Location { get; init; } = "";
     public double ElevationGain { get; init; }
     public string Difficulty { get; init; } = "";
