@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace BaruchsTreks.Tests;
 
@@ -112,6 +113,9 @@ public sealed partial class AppFactory : WebApplicationFactory<Program>
         AssertLocalStorage(Environment.GetEnvironmentVariable("ConnectionStrings__Storage"));
 
         builder.UseEnvironment("Development");
+
+        // Klíče jsou záměrně nešifrované (viz AuthSetup); varování XmlKeyManager[35] by jen zašumělo výstup testů.
+        builder.ConfigureLogging(l => l.AddFilter("Microsoft.AspNetCore.DataProtection", LogLevel.Error));
 
         // UseSetting je vidět už při buildu hostu, tedy i pro hodnoty čtené přímo v Program.cs.
         foreach (var (key, value) in _settings)

@@ -34,7 +34,7 @@ public sealed class AdminSeeder(
         foreach (var credential in options.Value.Users)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (string.IsNullOrEmpty(credential.UserName) || string.IsNullOrEmpty(credential.Password))
+            if (string.IsNullOrWhiteSpace(credential.UserName) || string.IsNullOrWhiteSpace(credential.Password))
                 continue;
 
             var existing = await users.FindAsync(credential.UserName);

@@ -59,6 +59,8 @@ public class AdminSeederTests(AzuriteFixture azurite)
     [Theory]
     [InlineData("", "pw-2")]
     [InlineData("baruch", "")]
+    [InlineData("  ", "pw-2")]
+    [InlineData("baruch", "   ")]
     [InlineData(null, null)]
     public async Task Seeder_SkipsEmptyEntries(string? userName, string? password)
     {

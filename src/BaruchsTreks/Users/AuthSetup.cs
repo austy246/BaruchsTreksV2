@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace BaruchsTreks.Users;
 
@@ -21,7 +22,7 @@ public static class AuthSetup
         services.AddSingleton<IPasswordHasher<AppUser>, PasswordHasher<AppUser>>();
         services.AddSingleton<IUserRepository, UserRepository>();
         services.AddSingleton<AdminSeeder>();
-        services.AddSingleton(TimeProvider.System);
+        services.TryAddSingleton(TimeProvider.System);
 
         services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
             .AddCookie(options =>
@@ -55,6 +56,9 @@ public static class AuthSetup
                 .RequireClaim(AppClaims.IsAdmin, "true"));
 
         // Klíče pro cookie a antiforgery jsou v blobu, aby přežily restart i nasazení nového kontejneru.
+        // Akceptované riziko: klíče jsou v privátním kontejneru baruchstreks-keys nešifrované (XmlKeyManager
+        // proto loguje varování). Kdo má čtecí přístup ke storage, mohl by podvrhnout cookie, ale to už
+        // znamená plný přístup k datům.
         var storage = configuration.GetSection(StorageOptions.SectionName).Get<StorageOptions>() ?? new StorageOptions();
         var connectionString = configuration.GetConnectionString("Storage")
             ?? throw new InvalidOperationException("Missing configuration value ConnectionStrings:Storage.");
