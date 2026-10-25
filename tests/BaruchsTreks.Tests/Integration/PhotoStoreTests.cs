@@ -149,4 +149,50 @@ public class PhotoStoreTests(AzuriteFixture azurite)
 
         Assert.Equal(sources.Select(Convert.ToBase64String).Order(), stored.Order());
     }
+
+    [Fact]
+    public async Task Upload_TenSameSecondFiles_SendsEachBodyOnce()
+    {
+        var storage = new TestStorage(azurite);
+        var counter = new CountingPolicy();
+        var options = new Azure.Storage.Blobs.BlobClientOptions();
+        options.AddPolicy(counter, Azure.Core.HttpPipelinePosition.PerCall);
+        var blobs = new Azure.Storage.Blobs.BlobServiceClient(azurite.ConnectionString, options);
+        var clock = new FixedClock(new DateTimeOffset(2025, 8, 15, 10, 30, 5, TimeSpan.Zero));
+        var store = new PhotoStore(blobs, Options.Create(storage.Options), clock);
+        var png = TestImages.Png(4, 4);
+
+        for (var i = 0; i < 10; i++)
+            await store.UploadAsync("trip_1", new MemoryStream(png), $"{i}.png");
+
+        Assert.Equal(10, (await store.ListAsync("trip_1")).Distinct().Count());
+        // Každá fotka se poslala přesně jednou (kolize se zjistí dotazem bez těla, ne opakovaným nahráním).
+        Assert.Equal(10, counter.BodyUploads);
+    }
+
+    private sealed class CountingPolicy : Azure.Core.Pipeline.HttpPipelinePolicy
+    {
+        private int _uploads;
+
+        public int BodyUploads => _uploads;
+
+        public override void Process(Azure.Core.HttpMessage message, ReadOnlyMemory<Azure.Core.Pipeline.HttpPipelinePolicy> pipeline)
+        {
+            Count(message);
+            ProcessNext(message, pipeline);
+        }
+
+        public override ValueTask ProcessAsync(Azure.Core.HttpMessage message, ReadOnlyMemory<Azure.Core.Pipeline.HttpPipelinePolicy> pipeline)
+        {
+            Count(message);
+            return ProcessNextAsync(message, pipeline);
+        }
+
+        private void Count(Azure.Core.HttpMessage message)
+        {
+            if (message.Request.Method == Azure.Core.RequestMethod.Put && message.Request.Content is not null
+                && message.Request.Uri.Path.Contains("/trip_1/"))
+                Interlocked.Increment(ref _uploads);
+        }
+    }
 }

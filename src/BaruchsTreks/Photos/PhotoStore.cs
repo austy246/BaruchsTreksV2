@@ -50,10 +50,17 @@ public sealed class PhotoStore(BlobServiceClient blobs, IOptions<StorageOptions>
         {
             var stamp = start.AddSeconds(attempt).ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture);
             var blobName = $"{tripId}/{stamp}{photo.Extension}";
+            var blob = _container.GetBlobClient(blobName);
+
+            // Levná kontrola bez těla: obsazené jméno se přeskočí dřív, než se pošle celá fotka.
+            if ((await blob.ExistsAsync()).Value)
+                continue;
+
             photoContent.Position = 0;
             try
             {
-                await _container.GetBlobClient(blobName).UploadAsync(
+                // IfNoneMatch zůstává jen jako pojistka proti souběhu mezi kontrolou a zápisem.
+                await blob.UploadAsync(
                     photoContent,
                     new BlobUploadOptions
                     {
