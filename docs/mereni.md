@@ -4,7 +4,20 @@ Stejné metriky před a po přechodu (spec, sekce Přechod v produkci, kroky 1 a
 
 ## Django baseline
 
-_Doplní řídicí agent před nasazením (paměť kontejneru z `docker stats`, odezva 20× `/trips/` a `/healthz`, velikost image)._
+Produkce (VPS, image `ghcr.io/austy246/baruchstreks-app:6b91632…`, Django + gunicorn 2 workery × 4 vlákna, sqlite), naměřeno 25. 10. 2026
+přímo na serveru (`curl https://treks.austy.cz`, 20 požadavků na cestu, sekundy). Kontejner běžel 8 dní, `mem_limit` 512 MB.
+
+| Metrika | Hodnota | Jak |
+|---|---|---|
+| Velikost image | 292 MB (rozbalený) | `docker image ls` |
+| Paměť kontejneru v klidu | 110,4 MiB (po měření 117,4 MiB) | `docker stats --no-stream` |
+| CPU v klidu | 1,1 % (po měření 2,7 %) | `docker stats --no-stream` |
+| `/healthz` | min 0,024 / medián 0,034 / p90 0,062 / max 0,741 | 20× curl |
+| `/trips/` (přehled, 6 výletů + první fotky) | min 1,117 / medián 1,551 / p90 5,419 / max 6,991 | 20× curl |
+| `/trips/all/` (seznam všech výletů) | min 0,275 / medián 0,305 / p90 2,856 / max 5,577 | 20× curl |
+
+Odezva `/trips/` je dlouhá, protože Django pro každý výlet volá Azure Blob (výpis fotek) a nic necachuje. Stejné dotazy se musí zopakovat
+po nasazení .NET verze (krok 7).
 
 ## Nová verze (.NET) – lokální měření
 
