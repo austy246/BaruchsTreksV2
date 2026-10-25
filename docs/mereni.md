@@ -63,5 +63,4 @@ Poznámky:
 - Velikost image je jediná metrika, která se nezlepšila: rozbalený image je o 14 MB větší (chiseled-extra s ICU a nativní Magick.NET
   s HEIC). Komprimovaný push do GHCR má 91,8 MB. Spec uvádí, že image nemá být těžší; s ohledem na poloviční paměť a řádově
   rychlejší odezvu to bere jako vědomý kompromis (rozhodnutí majitele je vhodné potvrdit).
-- Rychlost přehledu je dána hlavně tím, že .NET výpisy fotek nezřetězuje do pomalých sekvenčních volání jako Django.
 - Odezvy `/trips/` a `/trips/all/` Djanga měřené na serveru byly velmi rozkolísané (p90 až 5 s), .NET verze je stabilní.
