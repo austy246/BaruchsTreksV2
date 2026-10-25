@@ -1,3 +1,4 @@
+using System.Globalization;
 using BaruchsTreks.Tracks;
 using BaruchsTreks.Trips;
 
@@ -87,7 +88,7 @@ public class TrackFieldComparerTests
         Assert.Equal("300 m", diffs[0].Current);
         Assert.Equal("500 m", diffs[0].New);
         Assert.Null(diffs[1].Current);
-        Assert.Equal("3 h", diffs[2].Current);
+        Assert.Equal("3.0 h", diffs[2].Current);
         Assert.Equal("2023-01-02", diffs[3].Current);
         Assert.Equal("50.00000, 18.00000", diffs[4].Current);
         Assert.Null(diffs[5].Current);
@@ -102,5 +103,54 @@ public class TrackFieldComparerTests
 
         Assert.Single(diffs);
         Assert.Equal("meters_ascend", diffs[0].Field);
+    }
+
+    private static string NewText(string field, object value) =>
+        TrackFieldComparer.Compare(new Dictionary<string, object> { [field] = value }, new Trip())[0].New;
+
+    [Theory]
+    [InlineData(3.0, "3.0 h")]
+    [InlineData(2.5, "2.5 h")]
+    [InlineData(0.35, "0.35 h")]
+    public void Display_Hours_UsesPythonFloatStyle(double hours, string expected) =>
+        Assert.Equal(expected, NewText("length_hours", hours));
+
+    [Fact]
+    public void Display_Meters_FollowsRuntimeType()
+    {
+        Assert.Equal("300 m", NewText("meters_ascend", 300));
+        Assert.Equal("300 m", NewText("meters_ascend", 300L));
+        Assert.Equal("300.0 m", NewText("meters_ascend", 300.0));
+    }
+
+    [Fact]
+    public void Display_CurrentWholeMeters_ArePlainIntegers()
+    {
+        var diffs = TrackFieldComparer.Compare(new Dictionary<string, object> { ["meters_ascend"] = 500 }, new Trip { MetersAscend = 300 });
+
+        Assert.Equal("300 m", diffs[0].Current);
+    }
+
+    [Fact]
+    public void Display_UnderCzechCulture_UsesDots()
+    {
+        var previous = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = new CultureInfo("cs-CZ");
+        try
+        {
+            Assert.Equal("2.5 h", NewText("length_hours", 2.5));
+            Assert.Equal("49.10000, 17.20000", NewText("parking_json", "{\"Latitude\":49.1,\"Longtitude\":17.2}"));
+        }
+        finally { CultureInfo.CurrentCulture = previous; }
+    }
+
+    [Fact]
+    public void Display_UnparsableCoordinates_ShowsDash()
+    {
+        var diffs = TrackFieldComparer.Compare(
+            new Dictionary<string, object> { ["parking_json"] = "{\"Latitude\":49.1,\"Longtitude\":17.2}" },
+            new Trip { ParkingJson = "garbage" });
+
+        Assert.Equal("—", diffs[0].Current);
     }
 }

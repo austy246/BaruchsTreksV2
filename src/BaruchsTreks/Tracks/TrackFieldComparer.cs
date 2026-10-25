@@ -63,14 +63,18 @@ public static class TrackFieldComparer
 
     private static object CurrentValue(string field, Trip trip) => field switch
     {
-        "meters_ascend" => trip.MetersAscend,
-        "meters_descend" => trip.MetersDescend,
+        "meters_ascend" => MetersValue(trip.MetersAscend),
+        "meters_descend" => MetersValue(trip.MetersDescend),
         "length_hours" => trip.LengthHours,
         "trip_completed_on" => trip.TripCompletedOn,
         "parking_json" => trip.ParkingJson,
         "high_point_json" => trip.HighPointJson,
         _ => throw new ArgumentOutOfRangeException(nameof(field), field, null),
     };
+
+    // Metry jsou v Django celá čísla (IntegerField); Trip je drží jako double kvůli smíšeným typům v datech.
+    private static object MetersValue(double meters) =>
+        meters == Math.Floor(meters) && Math.Abs(meters) < long.MaxValue ? (object)(long)meters : meters;
 
     // Nula nebo prázdný řetězec (i "none") znamená, že tam zatím nic zadané není.
     private static bool IsBlank(object? value) => value switch
@@ -171,8 +175,16 @@ public static class TrackFieldComparer
 
     private static string Text(object value) => value switch
     {
-        double d => d.ToString("R", CultureInfo.InvariantCulture),
+        double d => PythonFloat(d),
+        float f => PythonFloat(f),
         IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),
         _ => value.ToString() ?? "",
     };
+
+    // Python repr(float): nejkratší tvar, který se vrátí zpět; celé číslo má ".0".
+    private static string PythonFloat(double value)
+    {
+        var text = value.ToString("R", CultureInfo.InvariantCulture);
+        return text.IndexOfAny(['.', 'E', 'N', 'I']) < 0 ? text + ".0" : text;
+    }
 }
