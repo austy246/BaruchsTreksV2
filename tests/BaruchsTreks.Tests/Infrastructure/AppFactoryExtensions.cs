@@ -15,6 +15,9 @@ public static class AppFactoryExtensions
 
     public static ITrackStore Tracks(this AppFactory factory) => factory.Services.GetRequiredService<ITrackStore>();
 
+    /// <summary>Falešná Strava, kterou aplikace používá; nastavují se jí odpovědi a čtou volání.</summary>
+    public static FakeStravaClient Strava(this AppFactory factory) => factory.Services.GetRequiredService<FakeStravaClient>();
+
     public static TableClient TripsTableClient(this AppFactory factory) =>
         factory.Services.GetRequiredService<TableServiceClient>().GetTableClient(factory.TripsTable);
 

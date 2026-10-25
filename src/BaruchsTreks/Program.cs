@@ -5,6 +5,7 @@ using Azure.Storage.Blobs;
 using BaruchsTreks.Cli;
 using BaruchsTreks.Http;
 using BaruchsTreks.Photos;
+using BaruchsTreks.Strava;
 using BaruchsTreks.Storage;
 using BaruchsTreks.Tracks;
 using BaruchsTreks.Trips;
@@ -39,6 +40,13 @@ builder.Services.AddSingleton<ITripRepository, TripRepository>();
 builder.Services.AddSingleton<IConfigRepository, ConfigRepository>();
 builder.Services.AddSingleton<ITrackStore, TrackStore>();
 builder.Services.AddSingleton<IPhotoStore, PhotoStore>();
+// Strava je volitelná (bez Strava:ClientId a Strava:ClientSecret je import vypnutý). Síť jde jen přes IStravaClient;
+// testy ho nahrazují falešným. Typovaný HttpClient je transientní, proto je služba scoped (rotace handlerů).
+builder.Services.AddOptions<StravaOptions>().BindConfiguration(StravaOptions.SectionName);
+builder.Services.AddStravaClient();
+builder.Services.AddSingleton<StravaTokenStore>();
+builder.Services.AddScoped<StravaService>();
+builder.Services.AddSingleton<StravaOAuthState>();
 // Háčky a čárky zůstanou v HTML jako UTF-8 (Django je také nekóduje); <, >, &, ' a " se kódují dál.
 builder.Services.Configure<WebEncoderOptions>(options => options.TextEncoderSettings = new TextEncoderSettings(UnicodeRanges.All));
 builder.Services.AddRazorPages(options =>

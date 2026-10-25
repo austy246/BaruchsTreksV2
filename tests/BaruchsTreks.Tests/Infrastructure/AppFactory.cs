@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
+using BaruchsTreks.Strava;
 using BaruchsTreks.Users;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
@@ -12,6 +13,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace BaruchsTreks.Tests;
@@ -57,6 +59,9 @@ public sealed partial class AppFactory : WebApplicationFactory<Program>
             ["Storage:KeysContainer"] = KeysContainer,
             ["Storage:PublicBlobBaseUrl"] = "http://blob.test/",
             ["Mapy:ApiKey"] = "test-key",
+            // Prázdné, aby proměnné prostředí vývojáře (Strava__ClientId) nezapnuly import; testy ho zapínají přes WithSetting.
+            ["Strava:ClientId"] = "",
+            ["Strava:ClientSecret"] = "",
         };
     }
 
@@ -115,9 +120,12 @@ public sealed partial class AppFactory : WebApplicationFactory<Program>
     }
 
     /// <summary>Klient přihlášený jako nový uživatel. Nesleduje přesměrování, drží cookies.</summary>
-    public async Task<HttpClient> CreateUserClientAsync(bool isAdmin)
+    public Task<HttpClient> CreateUserClientAsync(bool isAdmin) =>
+        CreateUserClientAsync(isAdmin, (isAdmin ? "admin-" : "user-") + Hex());
+
+    /// <summary>Klient přihlášený jako nový uživatel se zadaným jménem (např. kvůli klíči <c>strava_tokens_{jméno}</c>).</summary>
+    public async Task<HttpClient> CreateUserClientAsync(bool isAdmin, string userName)
     {
-        var userName = (isAdmin ? "admin-" : "user-") + Hex();
         await CreateUserAsync(userName, TestPassword, isAdmin);
 
         var client = CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
@@ -144,6 +152,11 @@ public sealed partial class AppFactory : WebApplicationFactory<Program>
         builder.ConfigureTestServices(services =>
         {
             services.AddTransient<IStartupFilter, TestEndpointsStartupFilter>();
+
+            // Strava vždy falešná: žádný test nesmí sáhnout na skutečnou síť (hlídá StravaTests.TestHost_NeverUsesRealStravaClient).
+            services.RemoveAll<IStravaClient>();
+            services.AddSingleton<FakeStravaClient>();
+            services.AddSingleton<IStravaClient>(sp => sp.GetRequiredService<FakeStravaClient>());
             foreach (var configure in _serviceOverrides)
                 configure(services);
         });

@@ -73,7 +73,7 @@
     <main class="container py-4">
         @foreach (var message in ViewContext.TempData.TakeMessages())
         {
-        <div class="alert alert-@(message.Tags.Length == 0 ? "info" : message.Tags) alert-dismissible fade show" role="alert">
+        <div class="alert alert-@(message.Tags.Length == 0 ? "info" : message.Tags == "error" ? "danger" : message.Tags) alert-dismissible fade show" role="alert">
             @message.Text
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>

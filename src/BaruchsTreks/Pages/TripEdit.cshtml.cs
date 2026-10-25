@@ -70,8 +70,8 @@ public class TripEditModel(
         // GPX se rozparsuje před zápisem, aby se jeho hodnoty daly zapsat jedním zápisem s ostatními poli.
         byte[]? gpxBytes = null;
         ParsedTrack? parsed = null;
-        var fills = new List<FieldDiff>();
-        var conflicts = new List<FieldDiff>();
+        IReadOnlyList<FieldDiff> fills = [];
+        IReadOnlyList<FieldDiff> conflicts = [];
         if (form.GpxFile is { } gpxFile)
         {
             using (var buffer = new MemoryStream())
@@ -87,18 +87,15 @@ public class TripEditModel(
             catch (GpxParseError ex)
             {
                 logger.LogWarning(ex, "Invalid GPX upload");
-                Error = GpxErrorMessage(ex);
+                Error = UserErrors.GpxMessage(environment, ex);
                 return await ShowAsync();
             }
 
-            data = data with { TrackJson = parsed.Stats.ToJson() };
-
             // Prázdná pole se vyplní hned, cokoli by přepsalo zadanou hodnotu čeká na potvrzení.
-            var derived = TrackFieldComparer.Derived(parsed.Stats);
-            foreach (var diff in TrackFieldComparer.Compare(derived, form.ToComparable()))
-                (diff.Current is null ? fills : conflicts).Add(diff);
-            foreach (var fill in fills)
-                data = data.WithDerived(fill.Field, derived[fill.Field]);
+            var plan = TrackImportPlan.Create(parsed, data, form.ToComparable());
+            data = plan.Data;
+            fills = plan.Fills;
+            conflicts = plan.Conflicts;
         }
 
         string tripId;
@@ -157,7 +154,7 @@ public class TripEditModel(
         {
             if (fills.Count > 0)
                 TempData.AddMessage("info", $"Prázdná pole ({fills.Count}) jsou předvyplněná z GPX.");
-            return Redirect($"/trips/trip/{encodedId}/track/apply/");
+            return Redirect(TrackImportPlan.ApplyUrl(tripId));
         }
 
         // Hodnoty z GPX jsou jen výchozí bod (vrchol je nejvyšší souřadnice, ne vždy ten správný), proto zůstaneme v editoru.
@@ -234,12 +231,4 @@ public class TripEditModel(
         ContentType = "text/html; charset=utf-8",
         StatusCode = StatusCodes.Status404NotFound,
     };
-
-    /// <summary>Hlášky parseru jsou určené uživateli; podrobnosti z XML parseru (řádek, pozice) jen ve vývoji.</summary>
-    private string GpxErrorMessage(GpxParseError error)
-    {
-        if (error.InnerException is null || environment.IsDevelopment())
-            return error.Message;
-        return "Soubor se nepodařilo přečíst jako GPX.";
-    }
 }

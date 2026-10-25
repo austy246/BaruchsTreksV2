@@ -416,7 +416,7 @@ public class ReadPagesTests(AzuriteFixture azurite)
 
         Assert.Contains("alert alert-success alert-dismissible fade show", first);
         Assert.Contains("Saved it", first);
-        Assert.Contains("alert alert-error alert-dismissible fade show", first);
+        Assert.Contains("alert alert-danger alert-dismissible fade show", first);
         Assert.Contains("Oops &lt;b&gt;", first);
         Assert.Contains("alert alert-info alert-dismissible fade show", first);
         Assert.Contains("data-bs-dismiss=\"alert\" aria-label=\"Close\"", first);

@@ -1,0 +1,136 @@
+@page "/trips/strava"
+@model StravaActivitiesModel
+@{
+    ViewData["Title"] = "Import trasy ze Stravy - Baruch's Treks";
+    var tripId = Model.TripId;
+    var page = Model.PageNumber;
+    var tripIdQuery = tripId.Length > 0 ? "&trip_id=" + Uri.EscapeDataString(tripId) : "";
+}
+<div class="d-flex align-items-center mb-4">
+    <h1 class="me-auto mb-0">Import trasy</h1>
+    @if (Model.Connected)
+    {
+    <form method="post" action="/trips/strava/disconnect/" asp-antiforgery="true">
+        <button type="submit" class="btn btn-outline-secondary btn-sm">Odpojit Stravu</button>
+    </form>
+    }
+</div>
+
+@if (tripId.Length > 0)
+{
+<div class="alert alert-info">
+    Vybraná trasa se připojí k existujícímu tripu
+    <a href="@StravaActivitiesModel.EditUrl(tripId)">@tripId</a>.
+</div>
+}
+
+@if (!Model.Configured)
+{
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title">Strava zatím není nastavená</h5>
+        <p>
+            Garmin hodinky se synchronizují do Stravy automaticky a Strava má na rozdíl od
+            Garmin Connect veřejné API, takže se odtud dá trasa stáhnout bez ručního exportu.
+        </p>
+        <ol>
+            <li>Založ aplikaci na <a href="https://www.strava.com/settings/api" target="_blank" rel="noopener">strava.com/settings/api</a>.</li>
+            <li>Do pole <em>Authorization Callback Domain</em> vyplň doménu tohoto webu.</li>
+            <li>Nastav proměnné prostředí <code>STRAVA_CLIENT_ID</code> a <code>STRAVA_CLIENT_SECRET</code>.</li>
+        </ol>
+        <p class="mb-0 text-muted">
+            Do té doby jde GPX nahrát ručně v editaci tripu (Garmin Connect &rarr; aktivita &rarr; Export to GPX).
+        </p>
+    </div>
+</div>
+}
+else if (!Model.Connected)
+{
+<div class="card">
+    <div class="card-body text-center py-5">
+        <p class="lead">Propoj svůj účet na Stravě a načti odtud zaznamenané trasy.</p>
+        <a href="/trips/strava/connect/@(tripId.Length > 0 ? "?trip_id=" + Uri.EscapeDataString(tripId) : "")"
+           class="btn btn-warning btn-lg">
+            <i class="bi bi-link-45deg"></i> Propojit se Stravou
+        </a>
+    </div>
+</div>
+}
+else
+{
+<div class="card">
+    <div class="card-body">
+        @if (Model.Activities.Count > 0)
+        {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Aktivita</th>
+                        <th>Datum</th>
+                        <th>Typ</th>
+                        <th class="text-end">Vzdálenost</th>
+                        <th class="text-end">Převýšení</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var activity in Model.Activities)
+                    {
+                    <tr>
+                        <td>@activity.Name</td>
+                        <td>@StravaActivitiesModel.Date(activity.StartDate)</td>
+                        <td>@activity.SportType</td>
+                        <td class="text-end">@DjangoFormat.Float(activity.DistanceKm) km</td>
+                        <td class="text-end">@DjangoFormat.Number(activity.ElevationGain) m</td>
+                        <td class="text-end">
+                            @if (activity.HasGps)
+                            {
+                            <form method="post" action="/trips/strava/import/@activity.Id/" asp-antiforgery="true">
+                                <input type="hidden" name="trip_id" value="@tripId">
+                                <button type="submit" class="btn btn-sm btn-primary">
+                                    <i class="bi bi-download"></i>
+                                    @(tripId.Length > 0 ? "Připojit" : "Importovat")
+                                </button>
+                            </form>
+                            }
+                            else
+                            {
+                            <span class="text-muted small">bez GPS</span>
+                            }
+                        </td>
+                    </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <nav class="d-flex justify-content-between">
+            @if (page > 1)
+            {
+            <a class="btn btn-outline-secondary btn-sm"
+               href="?page=@(page - 1)@tripIdQuery">
+                &larr; Novější
+            </a>
+            }
+            else
+            {
+            <span></span>
+            }
+            <a class="btn btn-outline-secondary btn-sm"
+               href="?page=@(page + 1)@tripIdQuery">
+                Starší &rarr;
+            </a>
+        </nav>
+        }
+        else
+        {
+        <p class="mb-0 text-muted">Žádné aktivity k zobrazení.</p>
+        }
+    </div>
+</div>
+
+<p class="text-muted small mt-3">
+    Bez GPS jsou aktivity nahrané ručně nebo z běžeckého pásu &ndash; z těch trasu vytvořit nelze.
+</p>
+}
