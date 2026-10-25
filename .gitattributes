@@ -2,3 +2,4 @@
 Dockerfile text eol=lf
 *.caddy text eol=lf
 tests/**/Fixtures/** -text
+*.heic binary

@@ -4,6 +4,10 @@
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Vzorek pro režim selftest v image; publikuje se vedle aplikace jako SelfTest/sample.heic. -->
+    <Content Include="SelfTest\sample.heic" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Azure.Data.Tables" Version="12.13.0" />
     <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Blobs" Version="1.5.5" />
     <PackageReference Include="Azure.Storage.Blobs" Version="12.30.1" />

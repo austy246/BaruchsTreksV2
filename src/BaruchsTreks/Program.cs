@@ -17,11 +17,23 @@ using Microsoft.Extensions.WebEncoders;
 if (args.Contains("--healthcheck"))
     return HealthCheckCommand.Run(args);
 
-// Doplní se v dalších úkolech (kontrola dat ve storage, test nativních závislostí v image).
-if (args.Contains("--check-data") || args.Contains("--selftest"))
+// Ověří nativní závislosti v image (Magick.NET, HEIC, česká kultura, ICU); bez storage a sítě.
+if (args.Contains("--selftest"))
+    return SelfTestCommand.Run(Console.Out);
+
+// Jen čtení: žádný StorageBootstrapper ani seeding adminů, takže je bezpečné pustit proti produkčnímu storage.
+// Konfigurace se skládá stejně jako v aplikaci (appsettings, proměnné prostředí, argumenty), ale bez buildu hostu.
+if (args.Contains("--check-data"))
 {
-    Console.Error.WriteLine("Not implemented yet: --check-data and --selftest.");
-    return 2;
+    var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+    var checkConfig = new ConfigurationBuilder()
+        .SetBasePath(AppContext.BaseDirectory)
+        .AddJsonFile("appsettings.json", optional: true)
+        .AddJsonFile($"appsettings.{environment}.json", optional: true)
+        .AddEnvironmentVariables()
+        .AddCommandLine(args)
+        .Build();
+    return await CheckDataCommand.RunAsync(checkConfig, Console.Out, CancellationToken.None);
 }
 
 var builder = WebApplication.CreateBuilder(args);
