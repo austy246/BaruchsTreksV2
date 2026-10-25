@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd" version="1.1" creator="Baruch's Treks">
+  <metadata>
+    <name>Ranní výběh</name>
+    <time>2025-07-12T06:00:00Z</time>
+  </metadata>
+  <trk>
+    <name>Ranní výběh</name>
+    <trkseg>
+      <trkpt lat="50.0" lon="14.0">
+        <ele>400.0</ele>
+        <time>2025-07-12T06:00:00Z</time>
+      </trkpt>
+      <trkpt lat="50.001" lon="14.0">
+        <ele>500.5</ele>
+        <time>2025-07-12T06:15:00Z</time>
+      </trkpt>
+      <trkpt lat="50.002" lon="14.0">
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

@@ -1,0 +1,82 @@
+{
+ "track_json": {
+  "distance_km": 1.83,
+  "meters_ascend": 0,
+  "meters_descend": 0,
+  "duration_hours": 0.5,
+  "point_count": 4,
+  "original_point_count": 4,
+  "min_elevation": 400,
+  "max_elevation": 400,
+  "bounds": [
+   [
+    50.0,
+    14.0
+   ],
+   [
+    50.01,
+    14.01
+   ]
+  ],
+  "name": "Test",
+  "start": {
+   "Latitude": 50.0,
+   "Longtitude": 14.0
+  },
+  "high_point": {
+   "Latitude": 50.0,
+   "Longtitude": 14.0,
+   "Elevation": 400.0
+  },
+  "started_on": "2025-07-12"
+ },
+ "geojson": {
+  "type": "Feature",
+  "properties": {
+   "distance_km": 1.83,
+   "meters_ascend": 0,
+   "meters_descend": 0,
+   "duration_hours": 0.5,
+   "point_count": 4,
+   "original_point_count": 4,
+   "min_elevation": 400,
+   "max_elevation": 400,
+   "bounds": [
+    [
+     50.0,
+     14.0
+    ],
+    [
+     50.01,
+     14.01
+    ]
+   ],
+   "name": "Test"
+  },
+  "geometry": {
+   "type": "LineString",
+   "coordinates": [
+    [
+     14.0,
+     50.0,
+     400.0
+    ],
+    [
+     14.0,
+     50.005,
+     400.0
+    ],
+    [
+     14.01,
+     50.005,
+     400.0
+    ],
+    [
+     14.01,
+     50.01,
+     400.0
+    ]
+   ]
+  }
+ }
+}
