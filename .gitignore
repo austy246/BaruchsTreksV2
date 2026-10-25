@@ -188,3 +188,11 @@ cython_debug/
 .pypirc
 
 staticfiles/*
+# .NET
+bin/
+obj/
+.vs/
+*.user
+
+# Agent scratch space
+.superpowers/

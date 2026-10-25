@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BaruchsTreks/BaruchsTreks.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BaruchsTreks.Tests/BaruchsTreks.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -12,3 +12,9 @@ deploy
 **/.env
 db.sqlite3
 staticfiles
+
+**/bin/
+**/obj/
+tests/
+.vs/
+.superpowers/
