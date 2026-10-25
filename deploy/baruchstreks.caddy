@@ -1,4 +1,4 @@
-# Copied by the deploy workflow to /srv/infra/sites/baruchstreks.caddy (with __APP_DOMAIN__ replaced) and
+# Rendered by deploy/remote-deploy.sh into /srv/infra/sites/baruchstreks.caddy (with __APP_DOMAIN__ replaced) and
 # imported by the shared Caddy of manarozeniny. No `tls` directive: Caddy gets the certificate via HTTP-01,
 # so the A record of the domain must point to the VPS first.
 __APP_DOMAIN__ {
@@ -12,12 +12,12 @@ __APP_DOMAIN__ {
         -Server
     }
 
-    # Photo and GPX uploads can be large.
+    # Photo (HEIC from phones) and GPX uploads can be large; the app limit is the same 50 MB.
     request_body {
         max_size 50MB
     }
 
-    reverse_proxy baruchstreks-app:8000 {
+    reverse_proxy baruchstreks-app:8080 {
         # While the container restarts during a deploy, hold the request instead of answering 502.
         lb_try_duration 30s
         lb_try_interval 500ms

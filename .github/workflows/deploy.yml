@@ -1,0 +1,184 @@
+name: Deploy
+
+# Every push to main: tests and image (GHCR) in parallel -> deploy to the shared VPS once both are green.
+# The VPS side is the same as a local deploy (deploy/deploy.ps1): deploy/ from this commit, then
+# deploy/remote-deploy.sh (selftest, compose up --wait with automatic rollback, Caddy). deploy.ps1 stays the
+# fallback (e.g. `-Tag <sha>` for a manual rollback); do not run it while this workflow is deploying.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**', '**/*.md', '.claude/**', '.superpowers/**']
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-baruchstreks
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash   # -eo pipefail
+
+env:
+  IMAGE: ghcr.io/austy246/baruchstreks-app
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TESTCONTAINERS_RYUK_DISABLED: 'true'   # ephemeral runner; avoids pulling Ryuk from Docker Hub
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Deploy script tests
+        run: |
+          for t in deploy/tests/test-*.sh; do
+            echo "::group::$t"
+            bash "$t"
+            echo "::endgroup::"
+          done
+      - name: dotnet test (Azurite via Testcontainers)
+        run: dotnet test
+
+  # Runs in parallel with test; an image of a commit whose tests fail is pushed (sha tag only) but never deployed.
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/BaruchsTreks/Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: [test, build]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: Production
+    permissions:
+      contents: read
+      packages: write   # only to move :latest to the deployed image
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: SSH key and pinned host key
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KNOWN_HOSTS: ${{ vars.SSH_KNOWN_HOSTS }}
+        run: |
+          : "${SSH_KEY:?}" "${SSH_HOST:?}" "${SSH_USER:?}" "${SSH_KNOWN_HOSTS:?}"
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_deploy
+          ssh-keygen -y -f ~/.ssh/id_deploy > /dev/null
+          printf '%s\n' "$SSH_KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host vps
+            HostName $SSH_HOST
+            User $SSH_USER
+            IdentityFile ~/.ssh/id_deploy
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            BatchMode yes
+            ConnectTimeout 15
+            ServerAliveInterval 15
+            ServerAliveCountMax 4
+          EOF
+
+      - name: Upload deploy/ from this commit
+        run: git archive --format=tar "$GITHUB_SHA" deploy | ssh vps tar -x -C /srv/baruchstreks
+
+      # GitHub secrets are the source of truth. They are piped through stdin to update-env-secrets.sh on the
+      # server, which translates the secret names to the ASP.NET Core keys, writes allow-listed keys only and
+      # never lets an empty secret overwrite a value (optional Strava / second admin secrets may not exist).
+      - name: Sync secrets into deploy/.env (stdin only, never printed)
+        env:
+          BARUCHSTREKS_STORAGE_CONNECTION: ${{ secrets.BARUCHSTREKS_STORAGE_CONNECTION }}
+          MAPY_CZ_API_KEY: ${{ secrets.MAPY_CZ_API_KEY }}
+          APP_DOMAIN: ${{ secrets.APP_DOMAIN }}
+          STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
+          STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
+          ADMIN_USER_1: ${{ secrets.ADMIN_USER_1 }}
+          ADMIN_PASSWORD_1: ${{ secrets.ADMIN_PASSWORD_1 }}
+          ADMIN_USER_2: ${{ secrets.ADMIN_USER_2 }}
+          ADMIN_PASSWORD_2: ${{ secrets.ADMIN_PASSWORD_2 }}
+          DJANGO_SUPERUSER_USERNAME: ${{ secrets.DJANGO_SUPERUSER_USERNAME }}
+          DJANGO_SUPERUSER_PASSWORD: ${{ secrets.DJANGO_SUPERUSER_PASSWORD }}
+        run: |
+          : "${BARUCHSTREKS_STORAGE_CONNECTION:?}" "${APP_DOMAIN:?}"
+          # At least one admin account (ADMIN_*_1, or the legacy DJANGO_SUPERUSER_* pair) must be configured.
+          [ -n "${ADMIN_USER_1:-$DJANGO_SUPERUSER_USERNAME}" ] && [ -n "${ADMIN_PASSWORD_1:-$DJANGO_SUPERUSER_PASSWORD}" ] \
+            || { echo "::error::no admin account secret (ADMIN_USER_1/ADMIN_PASSWORD_1 or DJANGO_SUPERUSER_*)"; exit 1; }
+          printf '%s=%s\n' \
+            BARUCHSTREKS_STORAGE_CONNECTION "$BARUCHSTREKS_STORAGE_CONNECTION" \
+            MAPY_CZ_API_KEY "$MAPY_CZ_API_KEY" \
+            APP_DOMAIN "$APP_DOMAIN" \
+            STRAVA_CLIENT_ID "$STRAVA_CLIENT_ID" \
+            STRAVA_CLIENT_SECRET "$STRAVA_CLIENT_SECRET" \
+            ADMIN_USER_1 "$ADMIN_USER_1" \
+            ADMIN_PASSWORD_1 "$ADMIN_PASSWORD_1" \
+            ADMIN_USER_2 "$ADMIN_USER_2" \
+            ADMIN_PASSWORD_2 "$ADMIN_PASSWORD_2" \
+            DJANGO_SUPERUSER_USERNAME "$DJANGO_SUPERUSER_USERNAME" \
+            DJANGO_SUPERUSER_PASSWORD "$DJANGO_SUPERUSER_PASSWORD" \
+            | ssh vps bash /srv/baruchstreks/deploy/update-env-secrets.sh
+
+      - name: Deploy (selftest, compose up --wait with rollback, Caddy)
+        run: ssh vps bash -s -- "$IMAGE:$GITHUB_SHA" --selftest < deploy/remote-deploy.sh
+
+      - name: Health check
+        env:
+          APP_DOMAIN: ${{ secrets.APP_DOMAIN }}
+        run: |
+          for _ in 1 2 3 4 5; do
+            code="$(curl -s -o /dev/null --connect-timeout 5 -m 10 -w '%{http_code}' "https://$APP_DOMAIN/healthz" || true)"
+            [ "$code" = 200 ] && { echo "healthz 200"; exit 0; }
+            sleep 3
+          done
+          echo "healthz failed (last status: ${code:-none})" >&2
+          exit 1
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag the deployed image as latest
+        run: docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE:$GITHUB_SHA"
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/id_deploy

@@ -1,3 +1,7 @@
+# Production compose on the shared VPS (/srv/baruchstreks/deploy). APP_IMAGE and APP_DOMAIN come from .env.
+# No volume: all data lives in Azure Storage (tables, blobs, Data Protection keys).
+name: baruchstreks
+
 x-logging: &default-logging
   driver: json-file
   options:
@@ -6,35 +10,33 @@ x-logging: &default-logging
 
 services:
   app:
-    image: ${APP_IMAGE:-baruchstreks-app:local}
-    build:
-      context: ..
-      dockerfile: Dockerfile
+    image: ${APP_IMAGE:?APP_IMAGE missing}
     restart: unless-stopped
     logging: *default-logging
     env_file: .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      # ";localhost" keeps host filtering from rejecting the container healthcheck (Host: localhost:8080).
+      AllowedHosts: ${APP_DOMAIN};localhost
     mem_limit: 512m
     cpus: 1
-    # Neprioritní projekt na sdíleném VPS: nižší váha CPU a přednostní oběť při OOM, aby nezdržel Věci Obecní.
+    # Neprioritní projekt na sdíleném VPS: nižší váha CPU a přednostní oběť při OOM, aby nezdržel ostatní projekty.
     cpu_shares: 256
     oom_score_adj: 500
-    volumes:
-      - app_data:/data
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      test: ["CMD", "dotnet", "BaruchsTreks.dll", "--healthcheck"]
       interval: 30s
-      timeout: 5s
-      start_period: 30s
+      timeout: 15s   # a fresh dotnet process can take >5 s when the shared VPS is busy (cpu_shares 256)
+      start_period: 20s
+      start_interval: 2s   # during start_period probe every 2 s so --wait returns quickly
       retries: 3
     networks:
       default: {}
       web:
-        aliases: [baruchstreks-app]   # unique name: the shared Caddy resolves it (docs/migrace-vps.md)
+        aliases: [baruchstreks-app]   # unique name: the shared Caddy resolves it
 
 networks:
   web:
     external: true
     name: web
-
-volumes:
-  app_data:
