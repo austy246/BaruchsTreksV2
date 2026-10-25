@@ -44,3 +44,24 @@ hodnoty se doplní po nasazení (spec, krok 7).
   a poté zůstala kolem 430 MiB (GC/LOH nevrací paměť).
 - Relevantní pro limit 512 MB: maximální povolený požadavek se vejde jen s malou rezervou, proto limit v produkčním compose ověřit.
 - Zdroj: `.superpowers/sdd/2026-10-25-dotnet-rewrite/e2e-report.md`.
+
+## Produkce po přechodu (.NET, naměřeno 25. 10. 2026, hned po nasazení)
+
+Stejný postup jako u Django baseline: přímo na VPS, `curl https://treks.austy.cz`, 20 požadavků na cestu, sekundy. Image
+`ghcr.io/austy246/baruchstreks-app:f460e56…`, `mem_limit` 512 MB, produkční data (62 výletů).
+
+| Metrika | Django | .NET | Změna |
+|---|---|---|---|
+| Paměť kontejneru v klidu | 110,4 MiB | 54,9 MiB (po měření 61,1 MiB) | zhruba polovina |
+| `/healthz` medián | 0,034 s | 0,020 s | |
+| `/trips/` medián / p90 / max | 1,551 / 5,419 / 6,991 s | 0,151 / 0,200 / 1,450 s | 10× rychlejší |
+| `/trips/all/` medián / p90 / max | 0,305 / 2,856 / 5,577 s | 0,093 / 0,107 / 0,273 s | 3× rychlejší |
+| Velikost image (rozbalený, `docker image ls` na VPS) | 292 MB | 306 MB | o 14 MB větší |
+
+Poznámky:
+
+- Velikost image je jediná metrika, která se nezlepšila: rozbalený image je o 14 MB větší (chiseled-extra s ICU a nativní Magick.NET
+  s HEIC). Komprimovaný push do GHCR má 91,8 MB. Spec uvádí, že image nemá být těžší; s ohledem na poloviční paměť a řádově
+  rychlejší odezvu to bere jako vědomý kompromis (rozhodnutí majitele je vhodné potvrdit).
+- Rychlost přehledu je dána hlavně tím, že .NET výpisy fotek nezřetězuje do pomalých sekvenčních volání jako Django.
+- Odezvy `/trips/` a `/trips/all/` Djanga měřené na serveru byly velmi rozkolísané (p90 až 5 s), .NET verze je stabilní.
