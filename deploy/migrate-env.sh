@@ -43,10 +43,8 @@ changed=0
 put() {
   local key="$1" value="$2"
   { grep -v "^${key}=" "$tmp" || true; } > "$tmp.new"
-  if [ -s "$tmp.new" ] && [ -n "$(tail -c1 "$tmp.new")" ]; then printf '
-' >> "$tmp.new"; fi
-  printf '%s=%s
-' "$key" "$value" >> "$tmp.new"
+  if [ -s "$tmp.new" ] && [ -n "$(tail -c1 "$tmp.new")" ]; then printf '\n' >> "$tmp.new"; fi
+  printf '%s=%s\n' "$key" "$value" >> "$tmp.new"
   mv "$tmp.new" "$tmp"
   changed=1
 }

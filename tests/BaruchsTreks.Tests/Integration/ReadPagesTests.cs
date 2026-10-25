@@ -120,7 +120,9 @@ public class ReadPagesTests(AzuriteFixture azurite)
         Assert.Contains("All Trips <span class=\"badge bg-secondary\">3</span>", all);
         Assert.Contains("Completed <span class=\"badge bg-secondary\">2</span>", all);
         Assert.Contains("Future Trips <span class=\"badge bg-secondary\">1</span>", all);
-        Assert.Contains("↑ 850m", all);
+        // Parita s Djangem: seznam nikdy nezobrazuje odznak převýšení (detail ano, viz Detail_ShowsPhotosAndTrackStats).
+        Assert.DoesNotContain("↑", all);
+        Assert.DoesNotContain("850m", all);
         Assert.Contains("Future Trip</small>", all);
         Assert.Contains("card shadow-sm border-info", all);
 

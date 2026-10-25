@@ -24,7 +24,7 @@ public sealed record StravaGpx(byte[] Gpx, StravaActivity Activity);
 
 /// <summary>
 /// Strava v3 API a uložení tokenů (<c>trips/strava_service.py</c>). Čte jen aktivity připojeného uživatele.
-/// Veškerý síťový provoz jde přes <see cref="IStravaClient"/>. Tokeny a secret se nikdy nezapisuje do logují a nejsou ve zprávách.
+/// Veškerý síťový provoz jde přes <see cref="IStravaClient"/>. Tokeny a secret se nikdy nezapisují do logu a nejsou ve zprávách.
 /// </summary>
 public sealed class StravaService(
     IStravaClient client,

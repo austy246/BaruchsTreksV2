@@ -36,3 +36,11 @@ Součástí image je i vzorek `SelfTest/sample.heic` (1,2 MB) pro `--selftest`.
 
 Poznámka: lokální měření je orientační (prázdná data, žádné fotky ani trasy); srovnání s Django baseline a produkční
 hodnoty se doplní po nasazení (spec, krok 7).
+
+### Poznámky z end-to-end ověření
+
+- Paměť aplikace v klidu: 105 MiB (`docker stats --no-stream`).
+- Po nahrání jednoho 21 MB GPX (soubor se celý drží v paměti; limit je 25 MB GPX / 50 MB požadavek) vzrostla špička asi na 434 MiB
+  a poté zůstala kolem 430 MiB (GC/LOH nevrací paměť).
+- Relevantní pro limit 512 MB: maximální povolený požadavek se vejde jen s malou rezervou, proto limit v produkčním compose ověřit.
+- Zdroj: `.superpowers/sdd/2026-10-25-dotnet-rewrite/e2e-report.md`.
