@@ -2,6 +2,7 @@ using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using BaruchsTreks.Cli;
 using BaruchsTreks.Storage;
+using BaruchsTreks.Tracks;
 using BaruchsTreks.Trips;
 using Microsoft.AspNetCore.Http.Features;
 
@@ -29,6 +30,7 @@ builder.Services.AddSingleton(sp => new BlobServiceClient(StorageConnectionStrin
 builder.Services.AddSingleton<StorageBootstrapper>();
 builder.Services.AddSingleton<ITripRepository, TripRepository>();
 builder.Services.AddSingleton<IConfigRepository, ConfigRepository>();
+builder.Services.AddSingleton<ITrackStore, TrackStore>();
 
 var app = builder.Build();
 
