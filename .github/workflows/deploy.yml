@@ -95,10 +95,9 @@ jobs:
         env:
           SSH_KEY: ${{ secrets.SSH_KEY }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
           SSH_KNOWN_HOSTS: ${{ vars.SSH_KNOWN_HOSTS }}
         run: |
-          : "${SSH_KEY:?}" "${SSH_HOST:?}" "${SSH_USER:?}" "${SSH_KNOWN_HOSTS:?}"
+          : "${SSH_KEY:?}" "${SSH_HOST:?}" "${SSH_KNOWN_HOSTS:?}"
           umask 077
           mkdir -p ~/.ssh
           printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_deploy
@@ -107,7 +106,7 @@ jobs:
           cat > ~/.ssh/config <<EOF
           Host vps
             HostName $SSH_HOST
-            User $SSH_USER
+            User ci-baruchstreks
             IdentityFile ~/.ssh/id_deploy
             IdentitiesOnly yes
             StrictHostKeyChecking yes
@@ -117,13 +116,10 @@ jobs:
             ServerAliveCountMax 4
           EOF
 
-      - name: Upload deploy/ from this commit
-        run: git archive --format=tar "$GITHUB_SHA" deploy | ssh vps tar -x -C /srv/baruchstreks
-
       # GitHub secrets are the source of truth. They are piped through stdin to update-env-secrets.sh on the
       # server, which translates the secret names to the ASP.NET Core keys, writes allow-listed keys only and
       # never lets an empty secret overwrite a value (optional Strava / second admin secrets may not exist).
-      - name: Sync secrets into deploy/.env (stdin only, never printed)
+      - name: Deploy (secrets on stdin; server fetches deploy/ by SHA, then selftest, compose up --wait with rollback, Caddy)
         env:
           BARUCHSTREKS_STORAGE_CONNECTION: ${{ secrets.BARUCHSTREKS_STORAGE_CONNECTION }}
           MAPY_CZ_API_KEY: ${{ secrets.MAPY_CZ_API_KEY }}
@@ -153,10 +149,7 @@ jobs:
             ADMIN_PASSWORD_2 "$ADMIN_PASSWORD_2" \
             DJANGO_SUPERUSER_USERNAME "$DJANGO_SUPERUSER_USERNAME" \
             DJANGO_SUPERUSER_PASSWORD "$DJANGO_SUPERUSER_PASSWORD" \
-            | ssh vps bash /srv/baruchstreks/deploy/update-env-secrets.sh
-
-      - name: Deploy (selftest, compose up --wait with rollback, Caddy)
-        run: ssh vps bash -s -- "$IMAGE:$GITHUB_SHA" --selftest < deploy/remote-deploy.sh
+            | ssh vps "deploy $GITHUB_SHA"
 
       - name: Health check
         env:
