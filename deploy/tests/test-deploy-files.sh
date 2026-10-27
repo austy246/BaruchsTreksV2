@@ -87,14 +87,14 @@ check "workflow: GHCR login with GITHUB_TOKEN" has "$workflow" 'password: \$\{\{
 check "workflow: image tag is the full SHA" has "$workflow" 'tags: \$\{\{ env\.IMAGE \}\}:\$\{\{ github\.sha \}\}'
 check "workflow: image repo" has "$workflow" 'IMAGE: ghcr\.io/austy246/baruchstreks-app'
 check "workflow: Dockerfile path" has "$workflow" 'file: src/BaruchsTreks/Dockerfile'
-check "workflow: secrets go through update-env-secrets.sh" has "$workflow" '\| ssh vps bash /srv/baruchstreks/deploy/update-env-secrets\.sh'
-check "workflow: remote-deploy.sh is streamed over stdin" has "$workflow" 'ssh vps bash -s -- .*< deploy/remote-deploy\.sh'
+check "workflow: secrets go through stdin into the single restricted deploy command" has "$workflow" '\| ssh vps "deploy \$GITHUB_SHA"'
+check "workflow: deploy/ is not uploaded from CI (the server fetches it by SHA)" lacks "$workflow" 'tar -x -C|ssh vps bash'
 check "workflow: secrets are only referenced as env/with values, never inline in a command" bash -c '! grep -E "\$\{\{ *secrets\." "$1" | grep -Ev "^[[:space:]]+[A-Za-z_0-9]+: \$\{\{ secrets\.[A-Z_0-9]+ \}\}$|^[[:space:]]*#"  | grep -q .' _ "$workflow"
 check "workflow: no ssh -i" lacks "$workflow" 'ssh -i'
 check "workflow: no secret variable echoed" lacks "$workflow" 'echo[[:space:]]+"?\$\{?[A-Za-z_0-9]*(SECRET|PASSWORD|_KEY|CONNECTION|STORAGE)'
 check "workflow: latest tagged from the sha image" has "$workflow" 'imagetools create -t "\$IMAGE:latest" "\$IMAGE:\$GITHUB_SHA"'
 check "workflow: :latest is created in exactly one place" bash -c '[ "$(grep -c "IMAGE:latest" "$1")" = 1 ]' _ "$workflow"
-check "workflow: latest comes after the deploy step" bash -c '[ "$(grep -n "Deploy (selftest" "$1" | cut -d: -f1)" -lt "$(grep -n "imagetools create" "$1" | cut -d: -f1)" ]' _ "$workflow"
+check "workflow: latest comes after the deploy step" bash -c '[ "$(grep -n "name: Deploy (secrets" "$1" | cut -d: -f1)" -lt "$(grep -n "imagetools create" "$1" | cut -d: -f1)" ]' _ "$workflow"
 check "workflow: health check before latest" bash -c '[ "$(grep -n "name: Health check" "$1" | cut -d: -f1)" -lt "$(grep -n "imagetools create" "$1" | cut -d: -f1)" ]' _ "$workflow"
 check "workflow: ssh key removed at the end" has "$workflow" 'rm -f ~/\.ssh/id_deploy'
 
